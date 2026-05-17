@@ -1,0 +1,1283 @@
+// ============================================================
+// MALAYSIAN STRATEGY INDICATOR v8.0  (Pine Script v6)
+// Based on: Malaysian Strategy (fxpinaytrader) &
+//           Trading SNR the Malaysian Way 2.0
+//
+// v8: Shows ONE highest-confidence signal per candle
+//     Each setup has a unique icon
+//     No overlapping markers — clean readable chart
+// ============================================================
+
+//@version=6
+indicator("Malaysian Strategy [SNR + Setups]", shorttitle = "MY-STRAT", overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 200)
+
+// ─────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────
+grpSIG  = "── Signal Display ──"
+grpSNR  = "── Support & Resistance ──"
+grpMTF  = "── Multi-Timeframe ──"
+grpDISP = "── Dashboard ──"
+
+minConfidence = input.string("Medium", "Minimum Signal Confidence", group = grpSIG, options = ["High Only", "Medium", "All"], tooltip = "High Only = SNRC1 + Eng + LS at Fresh SNR (rarest, safest)\nMedium = + QMR/QMC, Dominant Break\nAll = + SNRC2, RSS/SRR")
+
+showSNR        = input.bool(true,  "Show SNR Levels",             group = grpSNR)
+snrLookback    = input.int(30,     "SNR Levels to Display",       group = grpSNR,  minval = 5, maxval = 100)
+showCongestion = input.bool(true,  "Show Congestion Zone",        group = grpSNR)
+showDZ         = input.bool(true,  "Show Danger Zone Warning",    group = grpSNR)
+
+htf1           = input.timeframe("60",  "HTF 1 (H1)",            group = grpMTF)
+htf2           = input.timeframe("240", "HTF 2 (H4)",            group = grpMTF)
+
+showDash       = input.bool(true,  "Show Dashboard",              group = grpDISP)
+showLegend     = input.bool(true,  "Show Icon Legend (top-right)", group = grpDISP)
+showStrategy   = input.bool(true,  "Show Strategy Guide (bot-right)", group = grpDISP, tooltip = "4-step Malaysian methodology checklist with live status — each step lights green when satisfied")
+showTimer      = input.bool(true,  "Show Multi-TF Countdown Timer (bot-left)", group = grpDISP, tooltip = "Live countdown to next candle close for 5m, 15m, 30m, 45m, 1H, 4H — updates each bar. Sits next to the Strategy Guide.")
+showFVG        = input.bool(true,  "Show FVG / iFVG Zones",        group = grpDISP, tooltip = "Fair Value Gaps — green=bullish, red=bearish, magenta/cyan=iFVG (flipped), grey=mitigated")
+fvgLookback    = input.int(200, "FVG: Max age in bars", minval = 20, maxval = 500, group = grpDISP, tooltip = "FVGs older than this are auto-deleted")
+fvgMinPct      = input.float(0.2, "FVG: Min size (% of price)", minval = 0.05, maxval = 2.0, step = 0.05, group = grpDISP, tooltip = "Only gaps larger than this % of price are drawn — filters out noise")
+fvgMaxActive   = input.int(15, "FVG: Max active zones", minval = 3, maxval = 50, group = grpDISP, tooltip = "Hard cap on simultaneously displayed zones — oldest get removed first")
+showBarColor   = input.bool(false, "Color Candles by H4 Bias",    group = grpDISP)
+
+// ─── ACCUMULATION DETECTION ───
+grpACC         = "🔵 Accumulation Detection"
+useAccDetect   = input.bool(true,  "Detect Sideways/Accumulation",  group = grpACC, tooltip = "When market is ranging, suppress all signals and show a banner")
+accAtrPct      = input.float(60.0, "ATR contraction threshold (%)", minval = 30.0, maxval = 100.0, step = 5.0, group = grpACC, tooltip = "ATR must drop below this % of its 50-bar average to count as contracted")
+accRangePct    = input.float(0.5,  "Max price range (% of price)",  minval = 0.1,  maxval = 5.0,   step = 0.1, group = grpACC, tooltip = "Last 20 bars must stay within this % band to count as ranging")
+accLookback    = input.int(20,     "Lookback bars for range check", minval = 10,   maxval = 50,    group = grpACC)
+
+// ─── LIQUIDITY SWEEP VISUAL ───
+grpLS          = "💧 Liquidity Sweep Markers"
+showLSMarker   = input.bool(true, "Show LS wick markers (1H only)", group = grpLS, tooltip = "Recolor the sweep wick orange and draw an arrow pointing at it. Only on 1H timeframe.")
+lsLineLength   = input.int(15, "LS level line length (bars)", minval = 5, maxval = 50, group = grpLS, tooltip = "How many bars to extend the dotted line at the swept level")
+
+// ─── LIQUIDITY POOLS (BSL / SSL) ───
+grpLIQ         = "🎯 Liquidity Pools (15m + 1H)"
+showLiqPools   = input.bool(true, "Show current liquidity (15m + 1H)", group = grpLIQ, tooltip = "Mark the most recent unswept swing high (BSL) and swing low (SSL) — places where stops are likely resting")
+
+// ─── ASIAN RANGE ───
+grpASIA        = "🌏 Asian Range"
+showAsianRange = input.bool(true, "Show Asian session High/Low", group = grpASIA, tooltip = "Draw orange lines at the highest wick and lowest wick of each Asian session (00:00-08:00 UTC). Once daily.")
+asianSess      = input.session("0000-0800", "Asian session hours", group = grpASIA, tooltip = "Default: 00:00-08:00 UTC (Tokyo open to London open)")
+asianTZ        = input.string("Etc/UTC", "Asian session timezone", options = ["Etc/UTC", "America/New_York", "Europe/London", "Asia/Tokyo", "Asia/Hong_Kong", "Australia/Sydney"], group = grpASIA)
+
+
+
+
+// ─────────────────────────────────────────────
+// COLORS
+// ─────────────────────────────────────────────
+C_BULL    = color.new(#26a69a, 0)
+C_BEAR    = color.new(#ef5350, 0)
+C_HIGH    = color.new(#00e676, 0)
+C_MED     = color.new(#ffd600, 0)
+C_LOW     = color.new(#ff6e40, 0)
+C_FRESH_S = color.new(#1565c0, 30)
+C_FRESH_R = color.new(#b71c1c, 30)
+C_UNFRESH = color.new(#9e9e9e, 60)
+C_CONG    = color.new(#7b1fa2, 60)
+C_DZ      = color.new(#ff6f00, 70)
+
+// HTF-dim variants — used on 1H/4H+ so signals don't dominate
+C_HIGH_DIM = color.new(#00e676, 50)
+C_MED_DIM  = color.new(#ffd600, 60)
+C_LOW_DIM  = color.new(#ff6e40, 70)
+
+// FVG / iFVG zone colors — semi-transparent fills
+C_FVG_BULL  = color.new(#26a69a, 80)   // green tint  — bullish gap (ACTIVE)
+C_FVG_BEAR  = color.new(#ef5350, 80)   // red tint    — bearish gap (ACTIVE)
+C_IFVG_BULL = color.new(#e040fb, 75)   // magenta     — bullish FVG flipped (acts as resistance now)
+C_IFVG_BEAR = color.new(#40c4ff, 75)   // cyan        — bearish FVG flipped (acts as support now)
+
+// Mitigated zone styling — 3-state lifecycle visualization
+C_MIT_LIGHT = color.new(#9e9e9e, 88)   // light grey  — FVG was mitigated (price fully traversed)
+C_MIT_DARK  = color.new(#616161, 82)   // darker grey — iFVG was filled in new direction (zone "used up")
+C_MIT_BORDER_L = color.new(#9e9e9e, 70)
+C_MIT_BORDER_D = color.new(#616161, 60)
+
+// Accumulation banner color
+C_ACC       = color.new(#ff9800, 20)   // amber/orange — neutral, attention-grabbing
+
+// Timeframe detection (in seconds): LTF = 5m/15m/30m, HTF = 1H and above
+isHTF = timeframe.in_seconds() >= 3600
+
+// Liquidity Sweep validity — Malaysian methodology, 1H only
+// Use seconds comparison so it works regardless of how the TF is labeled
+tfSec       = timeframe.in_seconds()
+isValidLSTF = tfSec == 3600   // 3600s = 1H
+
+// Pick tier-appropriate colors and sizes based on timeframe
+cHigh    = isHTF ? C_HIGH_DIM : C_HIGH
+cMed     = isHTF ? C_MED_DIM  : C_MED
+cLow     = isHTF ? C_LOW_DIM  : C_LOW
+szHigh   = isHTF ? size.tiny  : size.small
+szMed    = isHTF ? size.tiny  : size.small
+szLow    = size.tiny
+
+// ─────────────────────────────────────────────
+// HELPER FUNCTIONS
+// ─────────────────────────────────────────────
+bodyHigh(i) => math.max(open[i], close[i])
+bodyLow(i)  => math.min(open[i], close[i])
+bodySize(i) => math.abs(close[i] - open[i])
+isBull(i)   => close[i] > open[i]
+isBear(i)   => close[i] < open[i]
+
+isBullishEngulf() =>
+    bullBody = close[0] > open[0]
+    bearPrev = close[1] < open[1]
+    engulfT  = close[0] > open[1]
+    engulfB  = open[0]  < close[1]
+    bullBody and bearPrev and engulfT and engulfB
+
+isBearishEngulf() =>
+    bearBody = close[0] < open[0]
+    bullPrev = close[1] > open[1]
+    engulfB  = close[0] < open[1]
+    engulfT  = open[0]  > close[1]
+    bearBody and bullPrev and engulfB and engulfT
+
+swingHigh(lb) => high[lb] == ta.highest(high, lb * 2 + 1)
+swingLow(lb)  => low[lb]  == ta.lowest(low,   lb * 2 + 1)
+
+// ─────────────────────────────────────────────
+// PRECOMPUTED ta.* FUNCTIONS
+// ─────────────────────────────────────────────
+highest30 = ta.highest(high, 30)
+lowest30  = ta.lowest(low, 30)
+avgBody   = ta.sma(bodySize(0), 20)
+atrVal    = ta.atr(14)
+
+// ─────────────────────────────────────────────
+// SNR LEVEL DETECTION (time-anchored)
+// ─────────────────────────────────────────────
+var float[] snrLevels  = array.new_float()
+var bool[]  snrIsSup   = array.new_bool()
+var bool[]  snrIsFresh = array.new_bool()
+var int[]   snrBarTime = array.new_int()
+
+lb = 5
+sh = swingHigh(lb)
+sl = swingLow(lb)
+
+if sh
+    lvl = isBull(lb) ? close[lb] : open[lb]
+    if array.size(snrLevels) < 200
+        array.push(snrLevels,  lvl)
+        array.push(snrIsSup,   false)
+        array.push(snrIsFresh, true)
+        array.push(snrBarTime, time[lb])
+
+if sl
+    lvl = isBear(lb) ? close[lb] : open[lb]
+    if array.size(snrLevels) < 200
+        array.push(snrLevels,  lvl)
+        array.push(snrIsSup,   true)
+        array.push(snrIsFresh, true)
+        array.push(snrBarTime, time[lb])
+
+snrSize = array.size(snrLevels)
+
+if snrSize > 0
+    for i = 0 to snrSize - 1
+        lvl   = array.get(snrLevels,  i)
+        isSup = array.get(snrIsSup,   i)
+        if isSup
+            if close < lvl and open < lvl
+                array.set(snrIsFresh, i, false)
+        else
+            if close > lvl and open > lvl
+                array.set(snrIsFresh, i, false)
+
+// Draw SNR lines (time-based, only on last bar, limited count)
+if showSNR and barstate.islast and snrSize > 0
+    startIdx = math.max(0, snrSize - snrLookback)
+    for i = startIdx to snrSize - 1
+        lvl     = array.get(snrLevels,  i)
+        isSup   = array.get(snrIsSup,   i)
+        isFresh = array.get(snrIsFresh, i)
+        startT  = array.get(snrBarTime, i)
+        col     = isFresh ? (isSup ? C_FRESH_S : C_FRESH_R) : C_UNFRESH
+        lstyle  = isFresh ? line.style_solid : line.style_dotted
+        wid     = isFresh ? 2 : 1
+        line.new(startT, lvl, time, lvl, xloc = xloc.bar_time, color = col, width = wid, style = lstyle)
+
+// ─────────────────────────────────────────────
+// CHECK: IS PRICE AT A FRESH SNR? (key book requirement)
+// ─────────────────────────────────────────────
+atFreshSupport     = false
+atFreshResistance  = false
+
+if snrSize > 0
+    for i = 0 to snrSize - 1
+        lvl   = array.get(snrLevels,  i)
+        isSup = array.get(snrIsSup,   i)
+        fresh = array.get(snrIsFresh, i)
+        near  = math.abs(close - lvl) / close < 0.003
+        if fresh and near and isSup
+            atFreshSupport := true
+        if fresh and near and not isSup
+            atFreshResistance := true
+
+// ─────────────────────────────────────────────
+// LIQUIDITY SWEEP (MISS) — wick pierces SNR but body doesn't
+// ─────────────────────────────────────────────
+lsBuy  = false
+lsSell = false
+
+// LS detection — wick pierces level, body recovers back within ATR tolerance
+// On 15m the strict version works, but 1H candles are larger and the body
+// often penetrates the level slightly even on a real sweep. We allow the
+// body to be within 25% of an ATR past the level — generous enough for 1H,
+// still strict enough to filter noise.
+lsTol = atrVal * 0.25
+
+if snrSize > 0
+    for i = 0 to snrSize - 1
+        lvl   = array.get(snrLevels, i)
+        isSup = array.get(snrIsSup,  i)
+        if isSup
+            // Buy sweep: wick dips below support, body closes within tolerance above (or just below)
+            if low < lvl and bodyLow(0) >= lvl - lsTol and close > lvl - lsTol
+                lsBuy := true
+        else
+            // Sell sweep: wick pierces above resistance, body closes within tolerance below
+            if high > lvl and bodyHigh(0) <= lvl + lsTol and close < lvl + lsTol
+                lsSell := true
+
+// LS validity gating — Malaysian methodology requires 15m or 1H for LS confirmation
+lsBuyValid  = lsBuy  and isValidLSTF
+lsSellValid = lsSell and isValidLSTF
+
+// ─────────────────────────────────────────────
+// ENGULFING DETECTION
+// ─────────────────────────────────────────────
+bullEngulf = isBullishEngulf()
+bearEngulf = isBearishEngulf()
+
+// HTF engulfing (1H and 4H) — used by step 3 of the strategy guide
+// These let us check "is there a confirmation engulfing on 1H or 4H?"
+htf1BullEng = request.security(syminfo.tickerid, htf1, isBullishEngulf())
+htf1BearEng = request.security(syminfo.tickerid, htf1, isBearishEngulf())
+htf2BullEng = request.security(syminfo.tickerid, htf2, isBullishEngulf())
+htf2BearEng = request.security(syminfo.tickerid, htf2, isBearishEngulf())
+
+// ─────────────────────────────────────────────
+// ACCUMULATION DETECTION — combined ATR + price range
+// ─────────────────────────────────────────────
+// Market is "accumulating" (sideways) when BOTH conditions are true:
+//   1. ATR contraction: current ATR(14) is below accAtrPct% of its 50-bar average
+//      → volatility is compressing (energy building, not directional)
+//   2. Price range: highest high - lowest low over last accLookback bars is
+//      below accRangePct% of current price → price is bouncing in a tight band
+// When BOTH fire, suppress all signals and show banner.
+
+atr14       = ta.atr(14)
+atrAvg50    = ta.sma(atr14, 50)
+atrContract = atr14 < atrAvg50 * (accAtrPct / 100.0)
+
+rangeHigh   = ta.highest(high, accLookback)
+rangeLow    = ta.lowest(low,  accLookback)
+rangeSize   = rangeHigh - rangeLow
+priceRange  = rangeSize < close * (accRangePct / 100.0)
+
+isAccumulating = useAccDetect and atrContract and priceRange
+
+// ─────────────────────────────────────────────
+// MARKET STRUCTURE
+// ─────────────────────────────────────────────
+var float prevSwingH = na
+var float prevSwingL = na
+
+if sh
+    prevSwingH := high[lb]
+if sl
+    prevSwingL := low[lb]
+
+// ─────────────────────────────────────────────
+// ENTRY POINT PATTERNS — RBR / DBD / RBD / DBR
+// ─────────────────────────────────────────────
+rbr = isBull(2) and bodySize(1) < bodySize(2) * 0.5 and isBull(0)
+dbd = isBear(2) and bodySize(1) < bodySize(2) * 0.5 and isBear(0)
+rbd = isBull(2) and bodySize(1) < bodySize(2) * 0.5 and isBear(0)
+dbr = isBear(2) and bodySize(1) < bodySize(2) * 0.5 and isBull(0)
+
+// ─────────────────────────────────────────────
+// SETUP DETECTION
+// ─────────────────────────────────────────────
+snrc1Buy  = false
+snrc1Sell = false
+snrc2Buy  = false
+snrc2Sell = false
+
+if snrSize > 0
+    for i = 0 to snrSize - 1
+        lvl   = array.get(snrLevels, i)
+        isSup = array.get(snrIsSup,  i)
+        fresh = array.get(snrIsFresh, i)
+        near  = math.abs(close - lvl) / close < 0.002
+        if fresh and isSup and near and rbr
+            snrc1Buy := true
+        if fresh and not isSup and near and dbd
+            snrc1Sell := true
+        if isSup and near and dbr
+            snrc2Buy := true
+        if not isSup and near and rbd
+            snrc2Sell := true
+
+// QMR
+var float qmrSellLevel = na
+var float qmrBuyLevel  = na
+
+if not na(prevSwingH) and not na(prevSwingL)
+    if low < prevSwingL and high < prevSwingH
+        qmrSellLevel := prevSwingH
+    if high > prevSwingH and low > prevSwingL
+        qmrBuyLevel := prevSwingL
+
+qmrSell = not na(qmrSellLevel) and math.abs(high - qmrSellLevel) / close < 0.003 and bearEngulf
+qmrBuy  = not na(qmrBuyLevel)  and math.abs(low  - qmrBuyLevel)  / close < 0.003 and bullEngulf
+
+// QMC
+var int driveCount = 0
+if sh
+    driveCount += 1
+if sl
+    driveCount += 1
+
+qmcSell = qmrSell and driveCount >= 4
+qmcBuy  = qmrBuy  and driveCount >= 4
+
+// RSS / SRR
+brokenSups = 0
+brokenRes  = 0
+if snrSize > 0
+    for i = 0 to snrSize - 1
+        isSup = array.get(snrIsSup,   i)
+        fresh = array.get(snrIsFresh, i)
+        if isSup and not fresh
+            brokenSups += 1
+        if not isSup and not fresh
+            brokenRes  += 1
+
+rssSell = brokenSups >= 2 and bearEngulf
+srrBuy  = brokenRes  >= 2 and bullEngulf
+
+// Dominant Break
+domCandle = bodySize(3) > avgBody * 2.0
+cnt3      = 0
+for k = 0 to 2
+    if bodySize(k) < bodySize(3) * 0.6
+        cnt3 += 1
+
+isDomBreak = domCandle and cnt3 >= 2
+domBreakUp = isDomBreak and isBear(3) and bullEngulf
+domBreakDn = isDomBreak and isBull(3) and bearEngulf
+
+// ─────────────────────────────────────────────
+// DANGER ZONE
+// ─────────────────────────────────────────────
+nearTopDZ = math.abs(high - highest30) / close < 0.005
+nearBotDZ = math.abs(low  - lowest30)  / close < 0.005
+
+// ═══════════════════════════════════════════════════════════
+// SIGNAL PRIORITY HIERARCHY (Book-based, highest → lowest)
+// ═══════════════════════════════════════════════════════════
+// HIGH confidence (Book's "no-brainer" setups):
+//   1. SNRC1 + Engulfing + LS at Fresh SNR
+//   2. QMR with Engulfing (reversal pattern)
+//
+// MEDIUM confidence (Book's good setups):
+//   3. SNRC1 (without LS but at Fresh SNR)
+//   4. QMC (continuation with structure)
+//   5. Dominant Break with Engulfing
+//
+// LOW confidence (Book labels as higher-risk):
+//   6. SNRC2 (counter-trend per book)
+//   7. RSS/SRR (after-the-move retests)
+// ═══════════════════════════════════════════════════════════
+
+// HIGH CONFIDENCE signals
+sigHighBuy  = (snrc1Buy and bullEngulf and lsBuyValid  and atFreshSupport)
+sigHighSell = (snrc1Sell and bearEngulf and lsSellValid and atFreshResistance)
+
+// MEDIUM CONFIDENCE signals (only fire if NO high signal on this bar)
+sigMedBuy  = not sigHighBuy and ((snrc1Buy and bullEngulf) or (qmrBuy) or (qmcBuy) or (domBreakUp))
+sigMedSell = not sigHighSell and ((snrc1Sell and bearEngulf) or (qmrSell) or (qmcSell) or (domBreakDn))
+
+// LOW CONFIDENCE signals (only if no high or med)
+sigLowBuy  = not sigHighBuy and not sigMedBuy and ((snrc2Buy and bullEngulf) or srrBuy)
+sigLowSell = not sigHighSell and not sigMedSell and ((snrc2Sell and bearEngulf) or rssSell)
+
+// Pre-fetch H4 bias here so naming functions can tag QMC-Strong / QMC-Weak
+// (full MTF section below uses these same values — fetched once, reused.)
+htf1CloseEarly = request.security(syminfo.tickerid, htf1, close)
+htf2CloseEarly = request.security(syminfo.tickerid, htf2, close)
+htf1PrevEarly  = request.security(syminfo.tickerid, htf1, close[1])
+htf2PrevEarly  = request.security(syminfo.tickerid, htf2, close[1])
+h4BullEarly    = htf2CloseEarly > htf2PrevEarly
+
+// Helper: format price compactly (4 sig digits)
+fmtPrice(p) => str.tostring(p, format.mintick)
+
+// Determine setup name for the top signal on this bar
+// Enriched format examples:
+//   HIGH BUY  on 15m:  "SNRC1+LS"
+//   HIGH BUY  on 5m:   "SNRC1+LS?" (sweep on wrong TF)
+//   MED  BUY  QMC:     "QMC-Strong @ 4715.42 x5"   (H4 agrees, 5 drives)
+//   MED  BUY  QMC:     "QMC-Weak @ 4699.30 x4"    (H4 disagrees, 4 drives)
+//   MED  BUY  QMR:     "QMR @ 4720.10"
+//   MED  BUY  SNRC1:   "SNRC1"
+//   MED  BUY  DOM:     "DOM BRK ▲"
+//   LOW  BUY  SNRC2:   "SNRC2"
+//   LOW  BUY  SRR:     "SRR"
+getBuyName() =>
+    name = ""
+    if sigHighBuy
+        // LS on 15m/1H = valid; on other TFs the HIGH signal can't even fire
+        // (because sigHighBuy requires lsBuyValid), so this always reads "SNRC1+LS"
+        name := "SNRC1+LS"
+    else if sigMedBuy
+        if qmcBuy
+            tag = h4BullEarly ? "QMC-Strong" : "QMC-Weak"
+            name := tag + " @ " + fmtPrice(qmrBuyLevel) + " x" + str.tostring(driveCount)
+        else if qmrBuy
+            name := "QMR @ " + fmtPrice(qmrBuyLevel)
+        else if snrc1Buy and bullEngulf
+            // Methodology: if LS fired but wrong TF, mark it as unverified
+            name := lsBuy and not lsBuyValid ? "SNRC1+LS?" : "SNRC1"
+        else if domBreakUp
+            name := "DOM BRK ▲"
+    else if sigLowBuy
+        if snrc2Buy
+            name := "SNRC2"
+        else if srrBuy
+            name := "SRR"
+    name
+
+getSellName() =>
+    name = ""
+    if sigHighSell
+        name := "SNRC1+LS"
+    else if sigMedSell
+        if qmcSell
+            tag = (not h4BullEarly) ? "QMC-Strong" : "QMC-Weak"
+            name := tag + " @ " + fmtPrice(qmrSellLevel) + " x" + str.tostring(driveCount)
+        else if qmrSell
+            name := "QMR @ " + fmtPrice(qmrSellLevel)
+        else if snrc1Sell and bearEngulf
+            name := lsSell and not lsSellValid ? "SNRC1+LS?" : "SNRC1"
+        else if domBreakDn
+            name := "DOM BRK ▼"
+    else if sigLowSell
+        if snrc2Sell
+            name := "SNRC2"
+        else if rssSell
+            name := "RSS"
+    name
+
+buyName  = getBuyName()
+sellName = getSellName()
+
+// Filter by user confidence setting
+showHigh = true
+showMed  = minConfidence == "Medium" or minConfidence == "All"
+showLow  = minConfidence == "All"
+
+// Final display flags: signal must pass tier filter AND must not be in accumulation
+displayHighBuy  = sigHighBuy  and showHigh and not isAccumulating
+displayMedBuy   = sigMedBuy   and showMed  and not isAccumulating
+displayLowBuy   = sigLowBuy   and showLow  and not isAccumulating
+
+displayHighSell = sigHighSell and showHigh and not isAccumulating
+displayMedSell  = sigMedSell  and showMed  and not isAccumulating
+displayLowSell  = sigLowSell  and showLow  and not isAccumulating
+
+// ═══════════════════════════════════════════════════════════
+// SIGNAL MARKERS — ONE single label per candle, nothing else
+// Pine v6 plotshape can't take dynamic text, so we use label.new
+// exclusively. One label per signal, colored by tier, positioned
+// at the candle.
+//
+// TIMEFRAME-AWARE:
+//   LTF (5m/15m/30m): full-size, full-color labels for entries
+//   HTF (1H/4H+):     smaller, dimmer labels so they don't dominate
+//                     + engulfing-candle confirmation ticks
+// ═══════════════════════════════════════════════════════════
+
+// BUY signals — one label below the bar, colored & sized by tier + timeframe
+if displayHighBuy
+    label.new(bar_index, low, text = "★ HIGH\n" + buyName, yloc = yloc.belowbar, style = label.style_label_up, color = cHigh, textcolor = color.black, size = szHigh)
+else if displayMedBuy
+    label.new(bar_index, low, text = "▲ MED\n" + buyName, yloc = yloc.belowbar, style = label.style_label_up, color = cMed, textcolor = color.black, size = szMed)
+else if displayLowBuy
+    label.new(bar_index, low, text = "✕ LOW\n" + buyName, yloc = yloc.belowbar, style = label.style_label_up, color = cLow, textcolor = color.white, size = szLow)
+
+// SELL signals — one label above the bar, colored & sized by tier + timeframe
+if displayHighSell
+    label.new(bar_index, high, text = "★ HIGH\n" + sellName, yloc = yloc.abovebar, style = label.style_label_down, color = cHigh, textcolor = color.black, size = szHigh)
+else if displayMedSell
+    label.new(bar_index, high, text = "▼ MED\n" + sellName, yloc = yloc.abovebar, style = label.style_label_down, color = cMed, textcolor = color.black, size = szMed)
+else if displayLowSell
+    label.new(bar_index, high, text = "✕ LOW\n" + sellName, yloc = yloc.abovebar, style = label.style_label_down, color = cLow, textcolor = color.white, size = szLow)
+
+// HTF ENGULFING CONFIRMATION — only on 1H/4H+, small tick to confirm momentum
+// These are NOT entries, just visual confirmation that HTF momentum aligns
+// Suppressed during accumulation (no point confirming momentum that doesn't exist)
+plotshape(isHTF and bullEngulf and not isAccumulating and not displayHighBuy  and not displayMedBuy  and not displayLowBuy,  title = "HTF Bull Eng Confirm", text = "✓", style = shape.triangleup,   location = location.belowbar, color = color.new(#00e676, 60), textcolor = color.new(color.white, 30), size = size.tiny)
+plotshape(isHTF and bearEngulf and not isAccumulating and not displayHighSell and not displayMedSell and not displayLowSell, title = "HTF Bear Eng Confirm", text = "✓", style = shape.triangledown, location = location.abovebar, color = color.new(#ef5350, 60), textcolor = color.new(color.white, 30), size = size.tiny)
+
+// DANGER ZONE — small warning, only on FIRST bar entering DZ
+// (not spammed every bar — only re-fires after price exits and re-enters DZ)
+noBuy  = not displayHighBuy  and not displayMedBuy  and not displayLowBuy
+noSell = not displayHighSell and not displayMedSell and not displayLowSell
+dzTopFirst = nearTopDZ and not nearTopDZ[1]   // wasn't in DZ last bar, is now
+dzBotFirst = nearBotDZ and not nearBotDZ[1]
+plotchar(showDZ and not isAccumulating and dzTopFirst and noSell, title = "DZ Top", char = "⚠", location = location.abovebar, color = C_DZ, size = size.small)
+plotchar(showDZ and not isAccumulating and dzBotFirst and noBuy,  title = "DZ Bot", char = "⚠", location = location.belowbar, color = C_DZ, size = size.small)
+
+// ═══════════════════════════════════════════════════════════
+// LIQUIDITY SWEEP VISUAL MARKER (15m / 1H only) — HIGH-VISIBILITY
+// ═══════════════════════════════════════════════════════════
+// When a valid LS fires (price wicked through an SNR level and pulled back
+// within the same bar's body), the chart shows multiple cues:
+//   1. Orange-recolored wick (via plotcandle overlay) — bright fluorescent orange
+//   2. Large 💧 droplet icon at the wick tip
+//   3. "LS" label next to the droplet — unmissable text marker
+//   4. Dotted horizontal line at the EXACT swept level, extending right N bars
+//      so you can see the swept level after the fact and watch for retests
+// Suppressed during accumulation. Only active on 15m/1H per Malaysian methodology.
+
+lsBuyShow  = showLSMarker and isValidLSTF and lsBuy  and not isAccumulating
+lsSellShow = showLSMarker and isValidLSTF and lsSell and not isAccumulating
+
+// (1) Large droplet at wick tip — bright, fully opaque
+plotshape(lsBuyShow,  title = "LS Buy Sweep",  text = "💧", style = shape.arrowup,   location = location.belowbar, color = color.new(#ff6f00, 0), textcolor = color.new(#ff6f00, 0), size = size.normal)
+plotshape(lsSellShow, title = "LS Sell Sweep", text = "💧", style = shape.arrowdown, location = location.abovebar, color = color.new(#ff6f00, 0), textcolor = color.new(#ff6f00, 0), size = size.normal)
+
+// (2) Bright "LS" text label at the swept wick — anchored to the wick tip itself
+if lsBuyShow
+    label.new(bar_index, low, text = "💧 LS\nSWEPT", yloc = yloc.price, style = label.style_label_up, color = color.new(#ff6f00, 10), textcolor = color.white, size = size.small, textalign = text.align_center)
+if lsSellShow
+    label.new(bar_index, high, text = "💧 LS\nSWEPT", yloc = yloc.price, style = label.style_label_down, color = color.new(#ff6f00, 10), textcolor = color.white, size = size.small, textalign = text.align_center)
+
+// (3) Recolor the swept wick — bright fluorescent orange, full opacity
+plotcandle(lsBuyShow or lsSellShow ? open  : na,
+           lsBuyShow or lsSellShow ? high  : na,
+           lsBuyShow or lsSellShow ? low   : na,
+           lsBuyShow or lsSellShow ? close : na,
+           title = "LS Sweep Wick Highlight",
+           color = close >= open ? color.new(#26a69a, 0) : color.new(#ef5350, 0),
+           wickcolor = color.new(#ff6f00, 0),
+           bordercolor = color.new(#ff6f00, 0))
+
+// (4) Dotted horizontal line at the swept level, extending right for N bars
+// This lets you see "this level was swept here" even minutes/hours later
+if lsBuyShow
+    line.new(bar_index, low, bar_index + lsLineLength, low, xloc = xloc.bar_index, color = color.new(#ff6f00, 30), width = 2, style = line.style_dotted)
+if lsSellShow
+    line.new(bar_index, high, bar_index + lsLineLength, high, xloc = xloc.bar_index, color = color.new(#ff6f00, 30), width = 2, style = line.style_dotted)
+
+// ═══════════════════════════════════════════════════════════
+// LIQUIDITY POOLS (BSL / SSL) — 1H only, "where the stops are"
+// ═══════════════════════════════════════════════════════════
+// In ICT/SMC terminology:
+//   BSL = Buy-Side Liquidity = above recent swing high (where shorts park stops)
+//   SSL = Sell-Side Liquidity = below recent swing low (where longs park stops)
+//
+// We track ONE active BSL and ONE active SSL at a time (the most recent
+// unswept swing). Each is shown as a tiny tick mark + price label at the level.
+//
+// Lifecycle:
+//   1. New swing high forms → BSL line drawn at that level (orange tick + label)
+//   2. Price closes above the level → BSL is "swept" → recolor to grey, keep visible
+//   3. Next new swing high → new BSL drawn, old grey one stays as history
+//
+// Same logic for SSL on the bottom side.
+
+isLiqTF = tfSec == 900 or tfSec == 3600   // 15m + 1H
+
+// Active liquidity trackers — store the level + bar + line/label references
+var float bslLevel    = na
+var int   bslBar      = na
+var line  bslLine     = na
+var label bslLabel    = na
+var bool  bslSwept    = false
+
+var float sslLevel    = na
+var int   sslBar      = na
+var line  sslLine     = na
+var label sslLabel    = na
+var bool  sslSwept    = false
+
+// On new swing high → register new BSL (the OLD one stays as grey history)
+if showLiqPools and isLiqTF and sh
+    newLevel = high[lb]
+    newBar   = bar_index - lb
+    // Only create a new BSL if it's meaningfully different from the existing one
+    // (avoids stacking lines at nearly identical levels)
+    minSep = atrVal * 0.5
+    if na(bslLevel) or math.abs(newLevel - bslLevel) > minSep or bslSwept
+        // If we had an active (unswept) BSL, leave it alone — it stays bright
+        // If the previous BSL was swept (grey), no action needed — it's history
+        // Create new active BSL
+        bslLevel := newLevel
+        bslBar   := newBar
+        bslSwept := false
+        bslLine  := line.new(newBar, newLevel, bar_index + 5, newLevel, xloc = xloc.bar_index, color = color.new(#ff6f00, 20), width = 1, style = line.style_dashed)
+        bslLabel := label.new(bar_index + 5, newLevel, text = "🎯 BSL " + str.tostring(newLevel, format.mintick), xloc = xloc.bar_index, yloc = yloc.price, style = label.style_label_left, color = color.new(#ff6f00, 30), textcolor = color.white, size = size.tiny)
+
+// On new swing low → register new SSL
+if showLiqPools and isLiqTF and sl
+    newLevel = low[lb]
+    newBar   = bar_index - lb
+    minSep = atrVal * 0.5
+    if na(sslLevel) or math.abs(newLevel - sslLevel) > minSep or sslSwept
+        sslLevel := newLevel
+        sslBar   := newBar
+        sslSwept := false
+        sslLine  := line.new(newBar, newLevel, bar_index + 5, newLevel, xloc = xloc.bar_index, color = color.new(#ff6f00, 20), width = 1, style = line.style_dashed)
+        sslLabel := label.new(bar_index + 5, newLevel, text = "🎯 SSL " + str.tostring(newLevel, format.mintick), xloc = xloc.bar_index, yloc = yloc.price, style = label.style_label_left, color = color.new(#ff6f00, 30), textcolor = color.white, size = size.tiny)
+
+// Extend active liquidity lines to current bar + watch for sweep
+if showLiqPools and isLiqTF
+    // Extend BSL right edge while active
+    if not na(bslLine) and not bslSwept
+        line.set_x2(bslLine, bar_index + 5)
+        label.set_x(bslLabel, bar_index + 5)
+        // Sweep detection: price closes above the BSL level
+        if close > bslLevel
+            line.set_color(bslLine, color.new(color.gray, 50))
+            line.set_style(bslLine, line.style_solid)
+            label.set_text(bslLabel, "(swept) BSL " + str.tostring(bslLevel, format.mintick))
+            label.set_color(bslLabel, color.new(color.gray, 50))
+            label.set_textcolor(bslLabel, color.new(color.white, 30))
+            bslSwept := true
+
+    // Extend SSL right edge while active
+    if not na(sslLine) and not sslSwept
+        line.set_x2(sslLine, bar_index + 5)
+        label.set_x(sslLabel, bar_index + 5)
+        // Sweep detection: price closes below the SSL level
+        if close < sslLevel
+            line.set_color(sslLine, color.new(color.gray, 50))
+            line.set_style(sslLine, line.style_solid)
+            label.set_text(sslLabel, "(swept) SSL " + str.tostring(sslLevel, format.mintick))
+            label.set_color(sslLabel, color.new(color.gray, 50))
+            label.set_textcolor(sslLabel, color.new(color.white, 30))
+            sslSwept := true
+
+
+// ═══════════════════════════════════════════════════════════
+// ASIAN RANGE — daily session high/low markers
+// ═══════════════════════════════════════════════════════════
+// Track the high and low of each Asian session (default 00:00-08:00 UTC,
+// Tokyo open to London open). When the session ends, two solid orange lines
+// are drawn spanning the session bars with price tags on the right end.
+// Lines stay visible permanently as historical reference levels.
+
+inAsian = not na(time(timeframe.period, asianSess, asianTZ))
+
+// Trackers — running high/low + session-start bar
+var float asiaHi      = na
+var float asiaLo      = na
+var int   asiaStartBar = na
+
+// Update during the session
+if showAsianRange and inAsian
+    if not inAsian[1]
+        // New Asian session — reset trackers
+        asiaHi       := high
+        asiaLo       := low
+        asiaStartBar := bar_index
+    else
+        if high > asiaHi
+            asiaHi := high
+        if low < asiaLo
+            asiaLo := low
+
+// When session transitions from active → inactive, draw the lines + labels
+// Lines span ONLY the Asian session bars (start → end), they don't extend forward
+if showAsianRange and barstate.isconfirmed and not inAsian and inAsian[1] and not na(asiaHi) and not na(asiaStartBar)
+    // High line — bold white spanning the session, visible from afar
+    line.new(asiaStartBar, asiaHi, bar_index, asiaHi, xloc = xloc.bar_index, color = color.new(color.white, 0), width = 3, style = line.style_solid)
+    // Low line — bold white spanning the session
+    line.new(asiaStartBar, asiaLo, bar_index, asiaLo, xloc = xloc.bar_index, color = color.new(color.white, 0), width = 3, style = line.style_solid)
+    // Price tag labels: dark navy background, white bold text, larger size for visibility
+    label.new(bar_index, asiaHi, text = "🌏 ASIA H " + str.tostring(asiaHi, format.mintick), xloc = xloc.bar_index, yloc = yloc.price, style = label.style_label_left, color = color.new(#0d47a1, 10), textcolor = color.white, size = size.small)
+    label.new(bar_index, asiaLo, text = "🌏 ASIA L " + str.tostring(asiaLo, format.mintick), xloc = xloc.bar_index, yloc = yloc.price, style = label.style_label_left, color = color.new(#0d47a1, 10), textcolor = color.white, size = size.small)
+
+
+// ═══════════════════════════════════════════════════════════
+// FVG (FAIR VALUE GAP) & iFVG (INVERTED FVG) — 4-state lifecycle
+// ═══════════════════════════════════════════════════════════
+// FVG = 3-candle imbalance where the wicks don't overlap.
+//   Bullish FVG: low > high[2]  (gap up)
+//   Bearish FVG: high < low[2]  (gap down)
+//
+// STATE MACHINE — zones progress through 4 states, NEVER deleted (history kept):
+//   State 0: ACTIVE        → bright green/red, right-edge extends to current bar
+//   State 1: FLIPPED iFVG  → magenta/cyan, right-edge keeps extending (still relevant)
+//   State 2: MITIGATED     → light grey, right-edge FROZEN at the bar of mitigation
+//   State 3: USED-UP iFVG  → darker grey, right-edge FROZEN at the bar where iFVG was filled
+//
+// VALIDITY RULES (configurable via inputs):
+//   1. Size:     gap ≥ fvgMinPct% of price
+//   2. Age:      zones older than fvgLookback bars are removed (hard delete only here)
+//   3. Cap:      max fvgMaxActive ACTIVE zones at once
+//   4. Overlap:  new FVG inside existing same-direction ACTIVE zone → skip
+
+// State encoding for fvgState[]: 0=ACTIVE, 1=FLIPPED, 2=MITIGATED, 3=USED-UP
+var box[]   fvgBoxes      = array.new_box()
+var label[] fvgLabels     = array.new_label()
+var float[] fvgTop        = array.new_float()
+var float[] fvgBot        = array.new_float()
+var bool[]  fvgIsBull     = array.new_bool()
+var int[]   fvgState      = array.new_int()     // 0/1/2/3 — see state machine above
+var int[]   fvgCreatedAt  = array.new_int()
+var int[]   fvgFrozenAt   = array.new_int()     // bar_index when right-edge was frozen (-1 if still extending)
+
+// Helper: only ACTIVE zones block overlap (mitigated/grey zones don't block new gaps)
+overlapsExisting(testTop, testBot, testIsBull) =>
+    found = false
+    n = array.size(fvgBoxes)
+    if n > 0
+        for i = 0 to n - 1
+            if array.get(fvgIsBull, i) == testIsBull and array.get(fvgState, i) == 0
+                exTop = array.get(fvgTop, i)
+                exBot = array.get(fvgBot, i)
+                if not (testBot > exTop or testTop < exBot)
+                    found := true
+    found
+
+// ── Detect new FVGs (only on confirmed bars) ────────────────
+if showFVG and barstate.isconfirmed and bar_index > 2
+    minGapSize = close * (fvgMinPct / 100.0)
+
+    // Bullish FVG
+    if low > high[2]
+        topL = low
+        botL = high[2]
+        if (topL - botL) >= minGapSize and not overlapsExisting(topL, botL, true)
+            b = box.new(left = bar_index - 2, top = topL, right = bar_index + 1, bottom = botL, xloc = xloc.bar_index, border_color = color.new(#26a69a, 50), bgcolor = C_FVG_BULL, border_width = 1)
+            l = label.new(x = bar_index + 1, y = (topL + botL) / 2, text = "FVG ↑", xloc = xloc.bar_index, style = label.style_label_left, color = color.new(#26a69a, 30), textcolor = color.white, size = size.tiny)
+            array.push(fvgBoxes, b)
+            array.push(fvgLabels, l)
+            array.push(fvgTop, topL)
+            array.push(fvgBot, botL)
+            array.push(fvgIsBull, true)
+            array.push(fvgState, 0)
+            array.push(fvgCreatedAt, bar_index)
+            array.push(fvgFrozenAt, -1)
+
+    // Bearish FVG
+    if high < low[2]
+        topL = low[2]
+        botL = high
+        if (topL - botL) >= minGapSize and not overlapsExisting(topL, botL, false)
+            b = box.new(left = bar_index - 2, top = topL, right = bar_index + 1, bottom = botL, xloc = xloc.bar_index, border_color = color.new(#ef5350, 50), bgcolor = C_FVG_BEAR, border_width = 1)
+            l = label.new(x = bar_index + 1, y = (topL + botL) / 2, text = "FVG ↓", xloc = xloc.bar_index, style = label.style_label_left, color = color.new(#ef5350, 30), textcolor = color.white, size = size.tiny)
+            array.push(fvgBoxes, b)
+            array.push(fvgLabels, l)
+            array.push(fvgTop, topL)
+            array.push(fvgBot, botL)
+            array.push(fvgIsBull, false)
+            array.push(fvgState, 0)
+            array.push(fvgCreatedAt, bar_index)
+            array.push(fvgFrozenAt, -1)
+
+// ── State machine: progress each zone through its lifecycle ──
+if showFVG and array.size(fvgBoxes) > 0
+    var int[] toDelete = array.new_int()
+    array.clear(toDelete)
+
+    fvgN = array.size(fvgBoxes)
+    for i = 0 to fvgN - 1
+        b         = array.get(fvgBoxes, i)
+        lab       = array.get(fvgLabels, i)
+        topL      = array.get(fvgTop, i)
+        botL      = array.get(fvgBot, i)
+        isBull    = array.get(fvgIsBull, i)
+        state     = array.get(fvgState, i)
+        createdAt = array.get(fvgCreatedAt, i)
+        age       = bar_index - createdAt
+
+        // Hard delete only on age — keeps chart from growing forever
+        if age > fvgLookback
+            array.push(toDelete, i)
+        else
+            // State 0 (ACTIVE): extend right edge, watch for flip into iFVG
+            if state == 0
+                box.set_right(b, bar_index + 1)
+                label.set_x(lab, bar_index + 1)
+                if isBull and close < botL
+                    // Bullish FVG → State 1 (iFVG, now acts as resistance)
+                    box.set_bgcolor(b, C_IFVG_BULL)
+                    box.set_border_color(b, color.new(#e040fb, 40))
+                    label.set_text(lab, "iFVG ↑→↓")
+                    label.set_color(lab, color.new(#e040fb, 30))
+                    array.set(fvgState, i, 1)
+                else if not isBull and close > topL
+                    // Bearish FVG → State 1 (iFVG, now acts as support)
+                    box.set_bgcolor(b, C_IFVG_BEAR)
+                    box.set_border_color(b, color.new(#40c4ff, 40))
+                    label.set_text(lab, "iFVG ↓→↑")
+                    label.set_color(lab, color.new(#40c4ff, 30))
+                    array.set(fvgState, i, 1)
+
+            // State 1 (FLIPPED iFVG): extend right edge, watch for fill in new direction
+            else if state == 1
+                box.set_right(b, bar_index + 1)
+                label.set_x(lab, bar_index + 1)
+                // Originally bullish → flipped to resistance → "used up" when price keeps falling below original bot
+                if isBull and close < botL - (topL - botL) * 0.2
+                    box.set_bgcolor(b, C_MIT_DARK)
+                    box.set_border_color(b, C_MIT_BORDER_D)
+                    label.set_text(lab, "(used)")
+                    label.set_color(lab, C_MIT_BORDER_D)
+                    array.set(fvgState, i, 3)
+                    array.set(fvgFrozenAt, i, bar_index)
+                // Originally bearish → flipped to support → "used up" when price keeps rising above original top
+                else if not isBull and close > topL + (topL - botL) * 0.2
+                    box.set_bgcolor(b, C_MIT_DARK)
+                    box.set_border_color(b, C_MIT_BORDER_D)
+                    label.set_text(lab, "(used)")
+                    label.set_color(lab, C_MIT_BORDER_D)
+                    array.set(fvgState, i, 3)
+                    array.set(fvgFrozenAt, i, bar_index)
+
+            // State 2 & 3 (MITIGATED / USED-UP): right edge is frozen — no work to do
+            // (these zones stay visible as historical context but don't update)
+
+    // Hard-delete only the truly old zones
+    delN = array.size(toDelete)
+    if delN > 0
+        for k = delN - 1 to 0
+            idx = array.get(toDelete, k)
+            box.delete(array.get(fvgBoxes, idx))
+            label.delete(array.get(fvgLabels, idx))
+            array.remove(fvgBoxes, idx)
+            array.remove(fvgLabels, idx)
+            array.remove(fvgTop, idx)
+            array.remove(fvgBot, idx)
+            array.remove(fvgIsBull, idx)
+            array.remove(fvgState, idx)
+            array.remove(fvgCreatedAt, idx)
+            array.remove(fvgFrozenAt, idx)
+
+    // Enforce cap on ACTIVE zones (state 0 only) — once over the cap, demote
+    // the oldest active zone to mitigated grey instead of deleting it.
+    // This keeps history but limits visual noise from competing active zones.
+    // GUARD: re-check size since deletions above may have emptied the array.
+    activeCount = 0
+    sz1 = array.size(fvgBoxes)
+    if sz1 > 0
+        for i = 0 to sz1 - 1
+            if array.get(fvgState, i) == 0
+                activeCount += 1
+
+    if activeCount > fvgMaxActive
+        // Walk oldest → newest, demote until we're under cap
+        sz2 = array.size(fvgBoxes)
+        if sz2 > 0
+            for i = 0 to sz2 - 1
+                if activeCount <= fvgMaxActive
+                    break
+                if array.get(fvgState, i) == 0
+                    bb = array.get(fvgBoxes, i)
+                    ll = array.get(fvgLabels, i)
+                    box.set_bgcolor(bb, C_MIT_LIGHT)
+                    box.set_border_color(bb, C_MIT_BORDER_L)
+                    box.set_right(bb, bar_index)
+                    label.set_x(ll, bar_index)
+                    label.set_text(ll, "(old)")
+                    label.set_color(ll, C_MIT_BORDER_L)
+                    array.set(fvgState, i, 2)
+                    array.set(fvgFrozenAt, i, bar_index)
+                    activeCount -= 1
+
+
+
+
+// ─────────────────────────────────────────────
+// CONGESTION ZONE — boxes at confluence price levels
+// ─────────────────────────────────────────────
+if showCongestion and barstate.islast and snrSize > 0
+    tolerance = syminfo.mintick * 50
+    startIdx  = math.max(0, snrSize - snrLookback)
+    for i = startIdx to snrSize - 1
+        lvlA   = array.get(snrLevels, i)
+        startT = array.get(snrBarTime, i)
+        cnt    = 0
+        for j = 0 to snrSize - 1
+            lvlB = array.get(snrLevels, j)
+            if math.abs(lvlA - lvlB) <= tolerance
+                cnt += 1
+        if cnt >= 3
+            box.new(startT, lvlA + tolerance, time, lvlA - tolerance, xloc = xloc.bar_time, border_color = C_CONG, bgcolor = color.new(C_CONG, 92))
+
+// ─────────────────────────────────────────────
+// MTF BIAS — reuse the early fetches (no duplicate request.security calls)
+// ─────────────────────────────────────────────
+htf1Close = htf1CloseEarly
+htf2Close = htf2CloseEarly
+htf1Prev  = htf1PrevEarly
+htf2Prev  = htf2PrevEarly
+
+htf1Bull  = htf1Close > htf1Prev
+htf2Bull  = htf2Close > htf2Prev
+
+bothBull = htf1Bull and htf2Bull
+bothBear = not htf1Bull and not htf2Bull
+mixedA   = htf1Bull and not htf2Bull
+
+htfBias = isAccumulating ? "⏸ ACCUMULATING" : bothBull ? "BUY BIAS" : bothBear ? "SELL BIAS" : mixedA ? "WAIT (H1↑H4↓)" : "WAIT (H1↓H4↑)"
+
+// ─────────────────────────────────────────────
+// CANDLE COLOR (optional)
+// ─────────────────────────────────────────────
+barUp  = htf2Bull and close > open
+barDn  = not htf2Bull and close < open
+barCol = showBarColor ? (barUp ? color.new(#26a69a, 50) : barDn ? color.new(#ef5350, 50) : na) : na
+barcolor(barCol)
+
+// ─────────────────────────────────────────────
+// ALERTS — top-priority signals + accumulation state changes
+// ─────────────────────────────────────────────
+alertcondition(displayHighBuy,  title = "★ HIGH BUY Signal",  message = "MY-STRAT HIGH-CONFIDENCE BUY: SNRC1 + Engulfing + Liquidity Sweep at Fresh Support")
+alertcondition(displayHighSell, title = "★ HIGH SELL Signal", message = "MY-STRAT HIGH-CONFIDENCE SELL: SNRC1 + Engulfing + Liquidity Sweep at Fresh Resistance")
+alertcondition(displayMedBuy,   title = "● MED BUY Signal",   message = "MY-STRAT MEDIUM BUY signal detected")
+alertcondition(displayMedSell,  title = "● MED SELL Signal",  message = "MY-STRAT MEDIUM SELL signal detected")
+alertcondition(displayLowBuy,   title = "○ LOW BUY Signal",   message = "MY-STRAT LOW-confidence BUY (counter-trend)")
+alertcondition(displayLowSell,  title = "○ LOW SELL Signal",  message = "MY-STRAT LOW-confidence SELL (counter-trend)")
+alertcondition(isAccumulating and not isAccumulating[1],  title = "⏸ Accumulation Started",  message = "MY-STRAT: Market entering accumulation/range — signals suppressed")
+alertcondition(not isAccumulating and isAccumulating[1],  title = "▶ Accumulation Ended",    message = "MY-STRAT: Accumulation ended — signals re-enabled, watch for breakout")
+
+// ─────────────────────────────────────────────
+// ACCUMULATION BANNER — big top-center label, only when accumulating
+// ─────────────────────────────────────────────
+if isAccumulating and barstate.islast
+    bannerX = bar_index - 20  // center over recent action, not pinned to last bar
+    bannerY = ta.highest(high, 50) + atrVal * 4
+    bannerText = "⏸  MARKET ACCUMULATING  ⏸\n" +
+                 "── STAND ASIDE ──\n" +
+                 "No trades. Wait for breakout."
+    label.new(bannerX, bannerY, text = bannerText, color = C_ACC, textcolor = color.white, style = label.style_label_down, size = size.huge, textalign = text.align_center)
+
+// ─────────────────────────────────────────────
+// DASHBOARD — single label anchored to last candle
+// ─────────────────────────────────────────────
+if showDash and barstate.islast
+    dashX = bar_index + 5
+    dashY = high + atrVal * 2
+
+    h4Txt = htf2Bull ? "↑ BULL" : "↓ BEAR"
+    h1Txt = htf1Bull ? "↑ BULL" : "↓ BEAR"
+
+    // Current signal status
+    sigTxt = ""
+    if isAccumulating
+        sigTxt := "⏸ STAND ASIDE\n   (Market ranging)"
+    else if displayHighBuy
+        sigTxt := "★ HIGH BUY: " + buyName
+    else if displayHighSell
+        sigTxt := "★ HIGH SELL: " + sellName
+    else if displayMedBuy
+        sigTxt := "▲ MED BUY: " + buyName
+    else if displayMedSell
+        sigTxt := "▼ MED SELL: " + sellName
+    else if displayLowBuy
+        sigTxt := "✕ LOW BUY: " + buyName
+    else if displayLowSell
+        sigTxt := "✕ LOW SELL: " + sellName
+    else
+        sigTxt := "— No signal —"
+
+    dzTxt = isAccumulating ? "— (paused)" : nearTopDZ ? "⚠ At Top DZ" : nearBotDZ ? "⚠ At Bot DZ" : "—"
+    locTxt = atFreshSupport ? "At Fresh S" : atFreshResistance ? "At Fresh R" : "—"
+    accTxt = isAccumulating ? "⏸ YES — stand aside" : "▶ NO — trading active"
+
+    dashText = "MALAYSIAN STRATEGY\n" +
+       "─────────────────\n" +
+       "Symbol: " + syminfo.ticker + " " + timeframe.period + "\n" +
+       "H4: " + h4Txt + "    H1: " + h1Txt + "\n" +
+       "Bias: " + htfBias + "\n" +
+       "─────────────────\n" +
+       "Accumulating: " + accTxt + "\n" +
+       "SNR Lvls: " + str.tostring(snrSize) + "\n" +
+       "Location: " + locTxt + "\n" +
+       "DZ Warn:  " + dzTxt + "\n" +
+       "─────────────────\n" +
+       "SIGNAL:\n" + sigTxt
+
+    // Dashboard background color shifts to amber during accumulation
+    dashBg = isAccumulating ? C_ACC : color.new(#1565c0, 70)
+    label.new(dashX, dashY, text = dashText, color = dashBg, textcolor = color.white, style = label.style_label_left, size = size.normal, textalign = text.align_left)
+
+// ─────────────────────────────────────────────
+// LEGEND — fixed top-right table, explains EVERY icon
+// Stays in place when zooming/panning the chart
+// Written so a complete beginner can read it
+// ─────────────────────────────────────────────
+var table legend = table.new(position.top_right, 2, 27, bgcolor = color.new(#1a1a1a, 5), border_color = color.new(color.gray, 60), border_width = 1, frame_color = color.new(color.white, 40), frame_width = 1)
+
+if showLegend and barstate.islast
+    // ── Section 1: Signal Icons ──
+    table.cell(legend, 0, 0, "ICON",    text_color = color.white, text_size = size.small, bgcolor = color.new(#1565c0, 20), text_halign = text.align_center)
+    table.cell(legend, 1, 0, "WHAT TO DO", text_color = color.white, text_size = size.small, bgcolor = color.new(#1565c0, 20), text_halign = text.align_left)
+
+    table.cell(legend, 0, 1, "★ HIGH",  text_color = color.black, text_size = size.small, bgcolor = C_HIGH, text_halign = text.align_center)
+    table.cell(legend, 1, 1, "TAKE IT — strongest setup", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+
+    table.cell(legend, 0, 2, "▲ MED",   text_color = color.black, text_size = size.small, bgcolor = C_MED, text_halign = text.align_center)
+    table.cell(legend, 1, 2, "BUY if H4 agrees (check dash)", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+
+    table.cell(legend, 0, 3, "▼ MED",   text_color = color.black, text_size = size.small, bgcolor = C_MED, text_halign = text.align_center)
+    table.cell(legend, 1, 3, "SELL if H4 agrees (check dash)", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+
+    table.cell(legend, 0, 4, "✕ LOW",   text_color = color.white, text_size = size.small, bgcolor = C_LOW, text_halign = text.align_center)
+    table.cell(legend, 1, 4, "SKIP — only experts", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+
+    table.cell(legend, 0, 5, "✓",       text_color = color.white, text_size = size.small, bgcolor = color.new(#00e676, 60), text_halign = text.align_center)
+    table.cell(legend, 1, 5, "H1/H4 engulfing — wind at back", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+
+    table.cell(legend, 0, 6, "⚠",       text_color = color.white, text_size = size.small, bgcolor = C_DZ, text_halign = text.align_center)
+    table.cell(legend, 1, 6, "WAIT — too far, don't chase", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+
+    // ── Section 2: Setup Name Codes ──
+    table.cell(legend, 0, 7, "CODE",    text_color = color.white, text_size = size.small, bgcolor = color.new(#1565c0, 20), text_halign = text.align_center)
+    table.cell(legend, 1, 7, "WHAT IT MEANS", text_color = color.white, text_size = size.small, bgcolor = color.new(#1565c0, 20), text_halign = text.align_left)
+
+    table.cell(legend, 0, 8, "SNRC1+LS", text_color = color.white, text_size = size.tiny, text_halign = text.align_center)
+    table.cell(legend, 1, 8, "Best: support + engulf + sweep (15m/1H)", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 9, "SNRC1+LS?", text_color = color.new(color.yellow, 0), text_size = size.tiny, text_halign = text.align_center)
+    table.cell(legend, 1, 9, "Same setup but sweep on wrong TF", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 10, "QMC-Strong", text_color = color.white, text_size = size.tiny, text_halign = text.align_center)
+    table.cell(legend, 1, 10, "Quasimodo, H4 AGREES (great)", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 11, "QMC-Weak", text_color = color.white, text_size = size.tiny, text_halign = text.align_center)
+    table.cell(legend, 1, 11, "Quasimodo, H4 disagrees (risk)", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 12, "xN",      text_color = color.white, text_size = size.tiny, text_halign = text.align_center)
+    table.cell(legend, 1, 12, "Drive count (more = stronger)", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 13, "QMR @ p", text_color = color.white, text_size = size.tiny, text_halign = text.align_center)
+    table.cell(legend, 1, 13, "Reversal at swing level 'p'", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 14, "DOM BRK", text_color = color.white, text_size = size.tiny, text_halign = text.align_center)
+    table.cell(legend, 1, 14, "Strong breakout candle", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 15, "SNRC2/SRR/RSS", text_color = color.white, text_size = size.tiny, text_halign = text.align_center)
+    table.cell(legend, 1, 15, "Counter-trend — weak", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    // ── Section 3: FVG / iFVG Zones ──
+    table.cell(legend, 0, 16, "ZONE",   text_color = color.white, text_size = size.small, bgcolor = color.new(#1565c0, 20), text_halign = text.align_center)
+    table.cell(legend, 1, 16, "PRICE MAGNET", text_color = color.white, text_size = size.small, bgcolor = color.new(#1565c0, 20), text_halign = text.align_left)
+
+    table.cell(legend, 0, 17, "FVG ↑",  text_color = color.white, text_size = size.tiny, bgcolor = color.new(#26a69a, 40), text_halign = text.align_center)
+    table.cell(legend, 1, 17, "Green gap up — price likely fills", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 18, "FVG ↓",  text_color = color.white, text_size = size.tiny, bgcolor = color.new(#ef5350, 40), text_halign = text.align_center)
+    table.cell(legend, 1, 18, "Red gap down — price likely fills", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 19, "iFVG",   text_color = color.white, text_size = size.tiny, bgcolor = color.new(#e040fb, 50), text_halign = text.align_center)
+    table.cell(legend, 1, 19, "FLIPPED zone — role reversed", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 20, "(old)",  text_color = color.white, text_size = size.tiny, bgcolor = C_MIT_LIGHT, text_halign = text.align_center)
+    table.cell(legend, 1, 20, "Mitigated zone — already taken", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 21, "(used)", text_color = color.white, text_size = size.tiny, bgcolor = C_MIT_DARK, text_halign = text.align_center)
+    table.cell(legend, 1, 21, "Used-up iFVG — fully exhausted", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 22, "⏸",      text_color = color.white, text_size = size.small, bgcolor = C_ACC, text_halign = text.align_center)
+    table.cell(legend, 1, 22, "ACCUMULATING — stand aside", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+
+    // ── Section 4: Liquidity (1H only) ──
+    table.cell(legend, 0, 23, "💧 LS",   text_color = color.white, text_size = size.small, bgcolor = color.new(#ff9100, 30), text_halign = text.align_center)
+    table.cell(legend, 1, 23, "Liquidity SWEPT — orange wick (1H only)", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 24, "🎯 BSL",  text_color = color.white, text_size = size.tiny, bgcolor = color.new(#ff6f00, 50), text_halign = text.align_center)
+    table.cell(legend, 1, 24, "Buy-side liquidity above (stops to grab)", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 25, "🎯 SSL",  text_color = color.white, text_size = size.tiny, bgcolor = color.new(#ff6f00, 50), text_halign = text.align_center)
+    table.cell(legend, 1, 25, "Sell-side liquidity below (stops to grab)", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(legend, 0, 26, "🌏 ASIA", text_color = color.black, text_size = size.tiny, bgcolor = color.new(color.white, 0), text_halign = text.align_center)
+    table.cell(legend, 1, 26, "Asian range H/L (00:00-08:00 UTC) — white", text_color = color.white, text_size = size.tiny, text_halign = text.align_left)
+
+// ═══════════════════════════════════════════════════════════
+// STRATEGY GUIDE — 4-step Malaysian methodology checklist
+// Fixed at bottom-right, live status: green when satisfied, grey when not
+// ═══════════════════════════════════════════════════════════
+// Step 1: Look for liquidity sweep (BSL/SSL) — 1H timeframe
+// Step 2: Check for valid Drop-Base-Drop or Rally-Base-Rally — 15m/30m/1H
+// Step 3: Check for confirmation engulfing candle (bull/bear) — 1H or 4H
+// Step 4: Check for visible patterns (SNR, SNRC, QMC/QMR, DOM BRK)
+// Then: execute the trade
+//
+// Each step's status is computed live and reflected in the table cell color.
+
+// ── Step 1: Liquidity sweep on LS-valid TFs ──
+// Pass if any LS marker fired (price wicked through SNR level and pulled back)
+step1Pass = (lsBuy or lsSell) and isLiqTF
+
+// ── Step 2: Setup pattern firing on this bar ──
+// Pass if any signal-tier setup is firing (HIGH/MED/LOW BUY or SELL)
+// Shows the specific setup name (SNRC1+LS, QMC-Strong, DOM BRK, etc.)
+step2Pass = displayHighBuy or displayMedBuy or displayLowBuy or displayHighSell or displayMedSell or displayLowSell
+
+// ── Step 3: Drop-Base-Drop or Rally-Base-Rally pattern on this candle ──
+// RBR (bullish continuation), DBD (bearish continuation),
+// DBR (drop-then-rally reversal), RBD (rally-then-drop reversal)
+step3Pass = rbr or dbd or rbd or dbr
+
+// ── Step 4: Confirmation engulfing on 1H or 4H ──
+// Pass if either HTF shows an engulfing candle in either direction
+step4Pass = htf1BullEng or htf1BearEng or htf2BullEng or htf2BearEng
+
+// Colors for checklist cells
+C_STEP_OK   = color.new(#00e676, 30)   // green   — step satisfied
+C_STEP_WAIT = color.new(#616161, 30)   // grey    — step not satisfied yet
+C_STEP_HDR  = color.new(#1565c0, 20)   // blue    — section header
+
+// Build the strategy guide table (bottom-right, fixed)
+var table strategyGuide = table.new(position.bottom_right, 2, 11, bgcolor = color.new(#1a1a1a, 5), border_color = color.new(color.gray, 60), border_width = 1, frame_color = color.new(color.white, 40), frame_width = 1)
+
+if showStrategy and barstate.islast
+    // Header
+    table.cell(strategyGuide, 0, 0, "STEP", text_color = color.white, text_size = size.small, bgcolor = C_STEP_HDR, text_halign = text.align_center)
+    table.cell(strategyGuide, 1, 0, "MALAYSIAN STRATEGY — 4 STEP", text_color = color.white, text_size = size.small, bgcolor = C_STEP_HDR, text_halign = text.align_left)
+
+    // Step 1
+    s1col = step1Pass ? C_STEP_OK : C_STEP_WAIT
+    s1icon = step1Pass ? "✓ 1" : "○ 1"
+    table.cell(strategyGuide, 0, 1, s1icon, text_color = color.white, text_size = size.normal, bgcolor = s1col, text_halign = text.align_center)
+    table.cell(strategyGuide, 1, 1, "Liquidity sweep (BSL/SSL)", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+    table.cell(strategyGuide, 0, 2, "", text_color = color.white, text_size = size.tiny)
+    table.cell(strategyGuide, 1, 2, "  → check 1H chart for 💧 LS marker", text_color = color.new(color.white, 30), text_size = size.tiny, text_halign = text.align_left)
+
+    // Step 2 — Setup pattern firing (was step 4)
+    s2col = step2Pass ? C_STEP_OK : C_STEP_WAIT
+    s2icon = step2Pass ? "✓ 2" : "○ 2"
+    s2detail = step2Pass ? "  ✓ " + (buyName != "" ? buyName : sellName) : "  → no setup pattern yet"
+    table.cell(strategyGuide, 0, 3, s2icon, text_color = color.white, text_size = size.normal, bgcolor = s2col, text_halign = text.align_center)
+    table.cell(strategyGuide, 1, 3, "Pattern visible (SNRC/QMC/DOM)", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+    table.cell(strategyGuide, 0, 4, "", text_color = color.white, text_size = size.tiny)
+    table.cell(strategyGuide, 1, 4, s2detail, text_color = color.new(color.white, 30), text_size = size.tiny, text_halign = text.align_left)
+
+    // Step 3 — Drop-Base-Drop / Rally-Base-Rally (was step 2)
+    s3col = step3Pass ? C_STEP_OK : C_STEP_WAIT
+    s3icon = step3Pass ? "✓ 3" : "○ 3"
+    s3detail = step3Pass ? (rbr ? "  ✓ RBR" : dbd ? "  ✓ DBD" : rbd ? "  ✓ RBD" : "  ✓ DBR") : "  → check 15m / 30m / 1H"
+    table.cell(strategyGuide, 0, 5, s3icon, text_color = color.white, text_size = size.normal, bgcolor = s3col, text_halign = text.align_center)
+    table.cell(strategyGuide, 1, 5, "Drop-Base-Drop / Rally-Base-Rally", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+    table.cell(strategyGuide, 0, 6, "", text_color = color.white, text_size = size.tiny)
+    table.cell(strategyGuide, 1, 6, s3detail, text_color = color.new(color.white, 30), text_size = size.tiny, text_halign = text.align_left)
+
+    // Step 4 — Confirmation engulfing 1H/4H (was step 3)
+    s4col = step4Pass ? C_STEP_OK : C_STEP_WAIT
+    s4icon = step4Pass ? "✓ 4" : "○ 4"
+    s4detail = ""
+    if htf1BullEng
+        s4detail := "  ✓ 1H Bullish engulf"
+    else if htf1BearEng
+        s4detail := "  ✓ 1H Bearish engulf"
+    else if htf2BullEng
+        s4detail := "  ✓ 4H Bullish engulf"
+    else if htf2BearEng
+        s4detail := "  ✓ 4H Bearish engulf"
+    else
+        s4detail := "  → waiting for 1H / 4H engulf"
+    table.cell(strategyGuide, 0, 7, s4icon, text_color = color.white, text_size = size.normal, bgcolor = s4col, text_halign = text.align_center)
+    table.cell(strategyGuide, 1, 7, "Confirmation engulfing (1H/4H)", text_color = color.white, text_size = size.small, text_halign = text.align_left)
+    table.cell(strategyGuide, 0, 8, "", text_color = color.white, text_size = size.tiny)
+    table.cell(strategyGuide, 1, 8, s4detail, text_color = color.new(color.white, 30), text_size = size.tiny, text_halign = text.align_left)
+
+    // Execute verdict
+    allPass = step1Pass and step2Pass and step3Pass and step4Pass
+    anyPass = step1Pass or step2Pass or step3Pass or step4Pass
+    passCount = (step1Pass ? 1 : 0) + (step2Pass ? 1 : 0) + (step3Pass ? 1 : 0) + (step4Pass ? 1 : 0)
+    verdictTxt = allPass ? "▶ EXECUTE TRADE" : passCount >= 3 ? "⚡ ALMOST READY — " + str.tostring(passCount) + "/4" : passCount >= 2 ? "⏳ BUILDING — " + str.tostring(passCount) + "/4" : "⏸ WAIT — " + str.tostring(passCount) + "/4"
+    verdictCol = allPass ? C_STEP_OK : passCount >= 3 ? color.new(#ffd600, 20) : passCount >= 2 ? color.new(#ff9100, 20) : color.new(#616161, 20)
+
+    table.cell(strategyGuide, 0, 9, "→", text_color = color.white, text_size = size.large, bgcolor = verdictCol, text_halign = text.align_center)
+    table.cell(strategyGuide, 1, 9, verdictTxt, text_color = color.white, text_size = size.normal, bgcolor = verdictCol, text_halign = text.align_left)
+    table.cell(strategyGuide, 0, 10, "", text_color = color.white, text_size = size.tiny)
+    table.cell(strategyGuide, 1, 10, "All 4 must be ✓ before entering", text_color = color.new(color.white, 30), text_size = size.tiny, text_halign = text.align_left)
+
+// ═══════════════════════════════════════════════════════════
+// MULTI-TF COUNTDOWN TIMER — top-left, fixed
+// Shows seconds remaining until next candle closes on:
+//   5m, 15m, 30m, 45m, 1H, 4H — all independent of chart's current TF
+// ═══════════════════════════════════════════════════════════
+// How it works:
+//   timenow returns the current wall-clock time in milliseconds since epoch.
+//   For any timeframe T (in seconds), the time-since-last-boundary is:
+//      (timenow / 1000) % T
+//   And the time-to-next-boundary is:
+//      T - ((timenow / 1000) % T)
+//   We compute this every bar so the timer refreshes constantly.
+
+// Helper: format seconds as M:SS or H:MM:SS
+fmtCountdown(secs) =>
+    s = math.floor(secs)
+    h = math.floor(s / 3600)
+    m = math.floor((s - h * 3600) / 60)
+    sec = s - h * 3600 - m * 60
+    h > 0 ? str.tostring(h) + ":" + (m < 10 ? "0" : "") + str.tostring(m) + ":" + (sec < 10 ? "0" : "") + str.tostring(sec)
+          : str.tostring(m) + ":" + (sec < 10 ? "0" : "") + str.tostring(sec)
+
+// Compute time-to-next-boundary for each TF
+nowSec = timenow / 1000
+
+t5m   = 300   - (nowSec % 300)
+t15m  = 900   - (nowSec % 900)
+t30m  = 1800  - (nowSec % 1800)
+t45m  = 2700  - (nowSec % 2700)
+t1h   = 3600  - (nowSec % 3600)
+t4h   = 14400 - (nowSec % 14400)
+
+// Highlight cell that matches the chart's current timeframe
+hi5  = tfSec == 300
+hi15 = tfSec == 900
+hi30 = tfSec == 1800
+hi45 = tfSec == 2700
+hi1h = tfSec == 3600
+hi4h = tfSec == 14400
+
+C_TIMER_HI  = color.new(#00e676, 30)   // green   — matches current chart TF
+C_TIMER_BG  = color.new(#1a1a1a, 5)
+C_TIMER_HDR = color.new(#1565c0, 20)
+
+var table timer = table.new(position.bottom_left, 2, 7, bgcolor = C_TIMER_BG, border_color = color.new(color.gray, 60), border_width = 1, frame_color = color.new(color.white, 40), frame_width = 1)
+
+if showTimer
+    // Header
+    table.cell(timer, 0, 0, "TF",       text_color = color.white, text_size = size.small, bgcolor = C_TIMER_HDR, text_halign = text.align_center)
+    table.cell(timer, 1, 0, "NEXT CANDLE", text_color = color.white, text_size = size.small, bgcolor = C_TIMER_HDR, text_halign = text.align_left)
+
+    // 5m row
+    table.cell(timer, 0, 1, "5m",  text_color = color.white, text_size = size.small, bgcolor = hi5  ? C_TIMER_HI : na, text_halign = text.align_center)
+    table.cell(timer, 1, 1, fmtCountdown(t5m),  text_color = color.white, text_size = size.small, bgcolor = hi5  ? C_TIMER_HI : na, text_halign = text.align_right)
+
+    // 15m row
+    table.cell(timer, 0, 2, "15m", text_color = color.white, text_size = size.small, bgcolor = hi15 ? C_TIMER_HI : na, text_halign = text.align_center)
+    table.cell(timer, 1, 2, fmtCountdown(t15m), text_color = color.white, text_size = size.small, bgcolor = hi15 ? C_TIMER_HI : na, text_halign = text.align_right)
+
+    // 30m row
+    table.cell(timer, 0, 3, "30m", text_color = color.white, text_size = size.small, bgcolor = hi30 ? C_TIMER_HI : na, text_halign = text.align_center)
+    table.cell(timer, 1, 3, fmtCountdown(t30m), text_color = color.white, text_size = size.small, bgcolor = hi30 ? C_TIMER_HI : na, text_halign = text.align_right)
+
+    // 45m row
+    table.cell(timer, 0, 4, "45m", text_color = color.white, text_size = size.small, bgcolor = hi45 ? C_TIMER_HI : na, text_halign = text.align_center)
+    table.cell(timer, 1, 4, fmtCountdown(t45m), text_color = color.white, text_size = size.small, bgcolor = hi45 ? C_TIMER_HI : na, text_halign = text.align_right)
+
+    // 1H row
+    table.cell(timer, 0, 5, "1H",  text_color = color.white, text_size = size.small, bgcolor = hi1h ? C_TIMER_HI : na, text_halign = text.align_center)
+    table.cell(timer, 1, 5, fmtCountdown(t1h),  text_color = color.white, text_size = size.small, bgcolor = hi1h ? C_TIMER_HI : na, text_halign = text.align_right)
+
+    // 4H row
+    table.cell(timer, 0, 6, "4H",  text_color = color.white, text_size = size.small, bgcolor = hi4h ? C_TIMER_HI : na, text_halign = text.align_center)
+    table.cell(timer, 1, 6, fmtCountdown(t4h),  text_color = color.white, text_size = size.small, bgcolor = hi4h ? C_TIMER_HI : na, text_halign = text.align_right)
