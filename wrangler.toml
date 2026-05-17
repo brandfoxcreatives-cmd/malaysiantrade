@@ -1,0 +1,24 @@
+# Cloudflare Worker config
+# Deploy with: npx wrangler deploy
+#
+# Before first deploy:
+#   1. npm install -g wrangler   (or use npx)
+#   2. wrangler login
+#   3. wrangler kv namespace create ALERTS
+#      → copy the ID it prints into kv_namespaces.id below
+#   4. wrangler secret put WEBHOOK_SECRET
+#      → paste a long random string when prompted (this is what you'll
+#        also paste into your TradingView webhook URL after ?secret=)
+
+name = "malaysiantrade-webhooks"
+main = "index.js"
+compatibility_date = "2024-11-01"
+
+# KV namespace for storing recent alerts
+# REPLACE the id below after running: wrangler kv namespace create ALERTS
+[[kv_namespaces]]
+binding = "ALERTS"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# Optional: set a custom route (paid plans only). Free tier uses
+# the workers.dev URL: https://malaysiantrade-webhooks.YOUR-SUBDOMAIN.workers.dev

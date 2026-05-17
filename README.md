@@ -131,10 +131,44 @@ malaysiantrade/
 ├── README.md                     ← this file
 ├── LICENSE                       ← MIT
 ├── .gitignore
+├── setup.sh                      ← one-command push to GitHub
+├── docs/
+│   └── ALERTS.md                 ← TradingView webhook setup + templates
+├── worker/                       ← Cloudflare Worker (alert receiver)
+│   ├── index.js
+│   ├── wrangler.toml
+│   └── README.md                 ← deploy in ~10 minutes, free tier
 └── .github/
     └── workflows/
         └── deploy.yml            ← auto-publish to GitHub Pages
 ```
+
+---
+
+## New in v2: TradingView chart + webhook alerts
+
+**Embedded TradingView chart** — the dashboard now includes a live
+TradingView chart on the active symbol. Two modes:
+
+- **PUBLIC CHART** — TradingView's free widget. Live prices, built-in
+  indicators only. Works out of the box, no login needed.
+- **MY LAYOUT** — your saved TradingView chart (default: `3EBRo3Ch`).
+  Shows your custom Malaysian Strategy indicator and drawings, *but only
+  if you're already logged into TradingView in this browser*. No
+  password sharing — it just rides your existing session.
+
+Set your chart ID in **⚙ CONFIG**.
+
+**Webhook alerts feed** — receive TradingView alerts in real time on a
+right-side panel, color-coded by confidence tier (HIGH/MED/LOW/ACC).
+Requires:
+
+1. A TradingView paid plan (Essential, ~$15/mo) — free plan disables webhooks
+2. A free Cloudflare Worker (~10 min setup, see [`worker/README.md`](./worker/README.md))
+3. Alerts configured in TradingView (see [`docs/ALERTS.md`](./docs/ALERTS.md))
+
+Once set up, the dashboard polls for new alerts every 10 seconds and
+flashes incoming ones with a green pop animation.
 
 ---
 
