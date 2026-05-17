@@ -1,0 +1,1334 @@
+<!-- Malaysian Strategy Live Dashboard - Terminal Aesthetic -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700;800&family=Major+Mono+Display&display=swap');
+
+  :root {
+    --bg: #0a0c0f;
+    --bg-panel: #11151a;
+    --bg-panel-2: #161b22;
+    --bg-row: #0d1117;
+    --border: #21262d;
+    --border-hot: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #6e7681;
+    --text-bright: #f0f6fc;
+    --amber: #ff8c00;
+    --amber-dim: rgba(255, 140, 0, 0.15);
+    --green: #00e676;
+    --green-dim: rgba(0, 230, 118, 0.12);
+    --red: #ff5252;
+    --red-dim: rgba(255, 82, 82, 0.12);
+    --yellow: #ffd600;
+    --cyan: #40c4ff;
+    --magenta: #e040fb;
+    --blue: #1565c0;
+    --grid-gap: 1px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 12px;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(21, 101, 192, 0.05), transparent 50%),
+      radial-gradient(circle at 80% 100%, rgba(255, 140, 0, 0.04), transparent 50%);
+  }
+
+  /* TOP BAR */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    padding: 10px 16px;
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .topbar::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 2px;
+    background: linear-gradient(90deg, var(--amber), var(--green), var(--cyan), var(--magenta));
+  }
+  .brand {
+    font-family: 'Major Mono Display', monospace;
+    font-size: 20px;
+    letter-spacing: 0.05em;
+    color: var(--text-bright);
+  }
+  .brand .accent { color: var(--amber); }
+  .tagline {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .clock {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 11px;
+  }
+  .clock-item { display: flex; flex-direction: column; align-items: flex-end; }
+  .clock-label { color: var(--text-dim); font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; }
+  .clock-value { color: var(--text-bright); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* GRID LAYOUT */
+  .grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 10px;
+  }
+  .col-left { display: flex; flex-direction: column; gap: 10px; }
+  .col-right { display: flex; flex-direction: column; gap: 10px; }
+
+  /* PANEL */
+  .panel {
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel-2);
+  }
+  .panel-title {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 700;
+  }
+  .panel-title .num {
+    color: var(--amber);
+    font-weight: 800;
+    margin-right: 6px;
+  }
+  .panel-body { padding: 10px 12px; }
+
+  /* SYMBOL CONTROLS */
+  .symbol-list { display: flex; flex-direction: column; gap: 4px; }
+  .symbol-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    background: var(--bg-row);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .symbol-row:hover { border-color: var(--border-hot); }
+  .symbol-row.active {
+    background: var(--amber-dim);
+    border-color: var(--amber);
+  }
+  .symbol-ticker {
+    flex: 1;
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--text-bright);
+    letter-spacing: 0.05em;
+  }
+  .symbol-price {
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    font-weight: 500;
+    font-size: 11px;
+  }
+  .symbol-chg {
+    font-size: 10px;
+    padding: 1px 5px;
+    font-variant-numeric: tabular-nums;
+    min-width: 50px;
+    text-align: right;
+  }
+  .symbol-chg.up { color: var(--green); }
+  .symbol-chg.down { color: var(--red); }
+
+  .add-symbol {
+    display: flex; gap: 4px; margin-top: 8px;
+  }
+  .add-symbol input {
+    flex: 1;
+    background: var(--bg-row);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 11px;
+    text-transform: uppercase;
+    outline: none;
+  }
+  .add-symbol input:focus { border-color: var(--amber); }
+  .add-symbol button {
+    background: var(--bg-row);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    padding: 6px 10px;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+  .add-symbol button:hover { background: var(--amber); color: var(--bg); }
+
+  /* TIMER PANEL */
+  .timer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+  .timer-cell {
+    background: var(--bg-panel);
+    padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .timer-cell.current { background: var(--green-dim); }
+  .timer-tf { font-size: 9px; color: var(--text-dim); letter-spacing: 0.2em; text-transform: uppercase; }
+  .timer-val { font-size: 14px; font-weight: 700; color: var(--text-bright); font-variant-numeric: tabular-nums; }
+  .timer-cell.current .timer-val { color: var(--green); }
+
+  /* QUOTE BIG */
+  .quote-hero {
+    padding: 16px 16px 12px;
+    position: relative;
+  }
+  .quote-hero::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 12px; right: 12px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-hot), transparent);
+  }
+  .quote-symbol {
+    font-family: 'Major Mono Display', monospace;
+    font-size: 26px;
+    letter-spacing: 0.05em;
+    color: var(--text-bright);
+  }
+  .quote-price {
+    font-size: 38px;
+    font-weight: 300;
+    color: var(--text-bright);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    margin: 6px 0;
+  }
+  .quote-meta {
+    display: flex; gap: 16px; align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .quote-meta .chg { font-weight: 700; }
+  .quote-meta .chg.up { color: var(--green); }
+  .quote-meta .chg.down { color: var(--red); }
+
+  /* TF MATRIX */
+  .matrix {
+    display: grid;
+    grid-template-columns: 70px repeat(5, 1fr);
+    gap: 1px;
+    background: var(--border);
+  }
+  .matrix-cell {
+    background: var(--bg-panel);
+    padding: 8px 10px;
+    font-size: 11px;
+    min-height: 40px;
+    display: flex; align-items: center;
+  }
+  .matrix-cell.header {
+    background: var(--bg-panel-2);
+    color: var(--text-dim);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 700;
+    justify-content: center;
+  }
+  .matrix-cell.label {
+    background: var(--bg-panel-2);
+    color: var(--text-dim);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .matrix-cell.center { justify-content: center; text-align: center; }
+
+  /* Strategy badges */
+  .strat-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    border: 1px solid;
+  }
+  .strat-badge.high { background: var(--green); color: #000; border-color: var(--green); }
+  .strat-badge.med { background: var(--yellow); color: #000; border-color: var(--yellow); }
+  .strat-badge.low { background: var(--red); color: #fff; border-color: var(--red); }
+  .strat-badge.none { background: transparent; color: var(--text-dim); border-color: var(--border); }
+  .strat-badge.acc { background: var(--amber); color: #000; border-color: var(--amber); }
+
+  .dir {
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    font-size: 11px;
+  }
+  .dir.buy { color: var(--green); }
+  .dir.sell { color: var(--red); }
+  .dir.none { color: var(--text-dim); }
+
+  .price-cell { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .price-cell.dim { color: var(--text-dim); font-size: 10px; }
+
+  /* Strategy guide */
+  .guide-list { display: flex; flex-direction: column; gap: 4px; }
+  .guide-step {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 10px;
+    padding: 6px 8px;
+    background: var(--bg-row);
+    align-items: center;
+  }
+  .guide-step.pass { background: rgba(0, 230, 118, 0.08); }
+  .step-num {
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--border);
+    color: var(--text-dim);
+    font-weight: 700;
+    font-size: 11px;
+  }
+  .guide-step.pass .step-num { background: var(--green); color: #000; }
+  .step-text { font-size: 11px; }
+  .step-detail { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+  .guide-verdict {
+    margin-top: 8px;
+    padding: 8px 10px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    background: var(--border);
+  }
+  .guide-verdict.execute { background: var(--green); color: #000; }
+  .guide-verdict.almost { background: var(--yellow); color: #000; }
+  .guide-verdict.building { background: #ff9100; color: #000; }
+  .guide-verdict.wait { background: var(--border); color: var(--text-dim); }
+
+  /* Bias indicator */
+  .bias-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+  .bias-cell {
+    background: var(--bg-panel);
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .bias-label { font-size: 9px; color: var(--text-dim); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 4px; }
+  .bias-val { font-size: 14px; font-weight: 700; }
+  .bias-val.bull { color: var(--green); }
+  .bias-val.bear { color: var(--red); }
+
+  /* Loading state */
+  .loading {
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 11px;
+  }
+  .blink { animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+
+  /* Footer */
+  .footer {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex; justify-content: space-between;
+    letter-spacing: 0.1em;
+  }
+  .footer a { color: var(--cyan); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  /* Confidence selector */
+  .conf-pick {
+    display: flex; gap: 1px;
+    background: var(--border);
+    margin-top: 6px;
+  }
+  .conf-pick button {
+    flex: 1;
+    background: var(--bg-row);
+    border: none;
+    color: var(--text-dim);
+    padding: 5px 4px;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .conf-pick button.active { background: var(--amber); color: #000; font-weight: 700; }
+
+  .small-note { font-size: 9px; color: var(--text-dim); margin-top: 8px; letter-spacing: 0.05em; }
+
+  /* Live tick indicator */
+  .live-tick {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+  .live-tick.error { background: var(--red); animation: none; }
+</style>
+
+<div class="topbar">
+  <div>
+    <div class="brand"><span class="accent">MY</span>-strat<span class="accent">.</span>terminal</div>
+    <div class="tagline">malaysian strategy &nbsp;·&nbsp; multi-symbol live dashboard</div>
+  </div>
+  <div class="clock">
+    <div class="clock-item">
+      <div class="clock-label">UTC</div>
+      <div class="clock-value" id="utc-clock">—</div>
+    </div>
+    <div class="clock-item">
+      <div class="clock-label">Status</div>
+      <div class="clock-value"><span class="live-tick" id="live-tick"></span><span id="live-text">CONNECTING</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- LEFT COLUMN -->
+  <div class="col-left">
+
+    <!-- SYMBOLS -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="num">01</span>WATCHLIST</div>
+        <div class="panel-title" id="watch-count">0</div>
+      </div>
+      <div class="panel-body">
+        <div class="symbol-list" id="symbol-list"></div>
+        <div class="add-symbol">
+          <input type="text" id="add-input" placeholder="e.g. EURUSD" maxlength="10" />
+          <button id="add-btn">ADD</button>
+        </div>
+        <div class="small-note">Symbols use Yahoo format. Auto-mapped: XAUUSD→GC=F, BTCUSD→BTC-USD, OILUSD→CL=F, NDX→^NDX</div>
+      </div>
+    </div>
+
+    <!-- COUNTDOWN -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="num">02</span>NEXT CANDLE CLOSE</div>
+      </div>
+      <div class="timer-grid" id="timer-grid"></div>
+    </div>
+
+    <!-- CONFIDENCE FILTER -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="num">03</span>MIN CONFIDENCE</div>
+      </div>
+      <div class="panel-body">
+        <div class="conf-pick">
+          <button data-conf="High Only">HIGH</button>
+          <button data-conf="Medium" class="active">MEDIUM</button>
+          <button data-conf="All">ALL</button>
+        </div>
+        <div class="small-note">HIGH = SNRC1 + Engulf + LS at fresh SNR (book's "no-brainer"). MED adds QMR/QMC/DOM. ALL includes counter-trend setups.</div>
+      </div>
+    </div>
+
+    <!-- STRATEGY 4-STEP GUIDE -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="num">04</span>4-STEP CHECKLIST</div>
+        <div class="panel-title" id="active-symbol-label">—</div>
+      </div>
+      <div class="panel-body">
+        <div class="guide-list" id="guide-list"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div class="col-right">
+
+    <!-- ACTIVE SYMBOL HEADER -->
+    <div class="panel">
+      <div class="quote-hero">
+        <div class="quote-symbol" id="hero-symbol">—</div>
+        <div class="quote-price" id="hero-price">—</div>
+        <div class="quote-meta">
+          <span class="chg" id="hero-chg">—</span>
+          <span id="hero-time">—</span>
+          <span id="hero-bias">—</span>
+        </div>
+      </div>
+      <div class="bias-row" id="bias-row">
+        <div class="bias-cell"><div class="bias-label">H1 BIAS</div><div class="bias-val" id="h1-bias">—</div></div>
+        <div class="bias-cell"><div class="bias-label">H4 BIAS</div><div class="bias-val" id="h4-bias">—</div></div>
+      </div>
+    </div>
+
+    <!-- TIMEFRAME MATRIX -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="num">05</span>SIGNAL MATRIX &nbsp;·&nbsp; ENTRY &nbsp;·&nbsp; STOP LOSS</div>
+        <div class="panel-title" id="matrix-status">—</div>
+      </div>
+      <div class="matrix" id="matrix">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- ALL SYMBOLS SUMMARY -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="num">06</span>ALL SYMBOLS &nbsp;·&nbsp; STRONGEST TF SIGNAL</div>
+      </div>
+      <div class="matrix" id="summary-matrix" style="grid-template-columns: 100px repeat(5, 1fr);">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer">
+  <span>data: yahoo finance · 30s refresh · strategy: ported from malaysian_strategy_pine_4.pine</span>
+  <span>tradingview chart: <a href="https://www.tradingview.com/chart/3EBRo3Ch/?symbol=OANDA%3AXAUUSD" target="_blank" rel="noopener">3EBRo3Ch</a></span>
+</div>
+
+<script>
+// =====================================================================
+// MALAYSIAN STRATEGY DASHBOARD
+// Ports the core signal logic from malaysian_strategy_pine_4.pine to JS
+// Data: Yahoo Finance OHLC bars (no auth, free)
+// =====================================================================
+
+// ─── STATE ──────────────────────────────────────────────────────────
+const TIMEFRAMES = [
+  { id: '5m',  yfInterval: '5m',  yfRange: '5d',  seconds: 300 },
+  { id: '15m', yfInterval: '15m', yfRange: '5d',  seconds: 900 },
+  { id: '30m', yfInterval: '30m', yfRange: '1mo', seconds: 1800 },
+  { id: '1h',  yfInterval: '60m', yfRange: '1mo', seconds: 3600 },
+  { id: '4h',  yfInterval: '1h',  yfRange: '3mo', seconds: 14400 }, // built from 1h aggregation
+];
+
+// Symbol mapping: user-facing → Yahoo Finance ticker
+const SYMBOL_MAP = {
+  'XAUUSD': 'GC=F',
+  'BTCUSD': 'BTC-USD',
+  'OILUSD': 'CL=F',
+  'USOIL':  'CL=F',
+  'NDX':    '^NDX',
+  'SPX':    '^GSPC',
+  'DXY':    'DX-Y.NYB',
+  'EURUSD': 'EURUSD=X',
+  'GBPUSD': 'GBPUSD=X',
+  'USDJPY': 'JPY=X',
+  'AUDUSD': 'AUDUSD=X',
+  'ETHUSD': 'ETH-USD',
+  'NAS100': '^NDX',
+};
+const yfTicker = (s) => SYMBOL_MAP[s.toUpperCase()] || s.toUpperCase();
+
+const state = {
+  symbols: ['XAUUSD', 'BTCUSD', 'OILUSD', 'NDX'],
+  active: 'XAUUSD',
+  minConfidence: 'Medium',
+  data: {},      // { symbol: { tf: {bars, signal, sl, ...} } }
+  prices: {},    // { symbol: {price, change, changePct, time} }
+  errors: {},
+};
+
+// ─── DATA FETCH ─────────────────────────────────────────────────────
+// Yahoo Finance chart endpoint — supports CORS via query.finance.yahoo.com proxy
+// Endpoint: https://query1.finance.yahoo.com/v8/finance/chart/{TICKER}?interval=X&range=Y
+// We use a CORS proxy because Yahoo's endpoint blocks browser-origin requests directly.
+// Using corsproxy.io as a free public proxy.
+const CORS_PROXY = 'https://corsproxy.io/?';
+
+async function fetchYahoo(ticker, interval, range) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}`;
+  const resp = await fetch(CORS_PROXY + encodeURIComponent(url));
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error('No chart data');
+  const ts = result.timestamp || [];
+  const q  = result.indicators?.quote?.[0] || {};
+  const bars = [];
+  for (let i = 0; i < ts.length; i++) {
+    const o = q.open?.[i], h = q.high?.[i], l = q.low?.[i], c = q.close?.[i], v = q.volume?.[i];
+    if (o == null || h == null || l == null || c == null) continue;
+    bars.push({ t: ts[i] * 1000, o, h, l, c, v: v ?? 0 });
+  }
+  return { bars, meta: result.meta };
+}
+
+// Build 4H bars by aggregating 1H bars (Yahoo doesn't offer native 4H)
+function aggregateTo4H(bars1h) {
+  const out = [];
+  let bucket = null;
+  for (const b of bars1h) {
+    const hr = new Date(b.t).getUTCHours();
+    const bucketHr = Math.floor(hr / 4) * 4;
+    const bucketStart = Math.floor(b.t / (4 * 3600 * 1000)) * (4 * 3600 * 1000);
+    if (!bucket || bucket.t !== bucketStart) {
+      if (bucket) out.push(bucket);
+      bucket = { t: bucketStart, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v };
+    } else {
+      bucket.h = Math.max(bucket.h, b.h);
+      bucket.l = Math.min(bucket.l, b.l);
+      bucket.c = b.c;
+      bucket.v += b.v;
+    }
+  }
+  if (bucket) out.push(bucket);
+  return out;
+}
+
+// ─── MALAYSIAN STRATEGY LOGIC (ported from Pine v6) ─────────────────
+// All functions index from end of array — bar[0] = latest, bar[1] = prev, etc.
+
+function bodyHigh(b) { return Math.max(b.o, b.c); }
+function bodyLow(b)  { return Math.min(b.o, b.c); }
+function bodySize(b) { return Math.abs(b.c - b.o); }
+function isBull(b)   { return b.c > b.o; }
+function isBear(b)   { return b.c < b.o; }
+
+function isBullishEngulf(b0, b1) {
+  return b0.c > b0.o && b1.c < b1.o && b0.c > b1.o && b0.o < b1.c;
+}
+function isBearishEngulf(b0, b1) {
+  return b0.c < b0.o && b1.c > b1.o && b0.c < b1.o && b0.o > b1.c;
+}
+
+// ATR(14)
+function atr(bars, period = 14) {
+  if (bars.length < period + 1) return 0;
+  const trs = [];
+  for (let i = bars.length - period; i < bars.length; i++) {
+    const b = bars[i], pb = bars[i-1];
+    const tr = Math.max(b.h - b.l, Math.abs(b.h - pb.c), Math.abs(b.l - pb.c));
+    trs.push(tr);
+  }
+  return trs.reduce((a, b) => a + b, 0) / trs.length;
+}
+
+// SMA of an array of values
+function sma(values, period) {
+  if (values.length < period) return 0;
+  const slice = values.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / slice.length;
+}
+
+// Swing high/low detector (Pine: swingHigh(lb))
+// idx = absolute bar index (from end), lb = lookback on each side
+function isSwingHigh(bars, endIdx, lb) {
+  // bar at position (endIdx - lb) is the candidate
+  const candIdx = endIdx - lb;
+  if (candIdx < lb || candIdx > bars.length - 1) return false;
+  const candHigh = bars[candIdx].h;
+  for (let i = candIdx - lb; i <= candIdx + lb; i++) {
+    if (i === candIdx) continue;
+    if (bars[i] && bars[i].h >= candHigh) return false;
+  }
+  return true;
+}
+function isSwingLow(bars, endIdx, lb) {
+  const candIdx = endIdx - lb;
+  if (candIdx < lb || candIdx > bars.length - 1) return false;
+  const candLow = bars[candIdx].l;
+  for (let i = candIdx - lb; i <= candIdx + lb; i++) {
+    if (i === candIdx) continue;
+    if (bars[i] && bars[i].l <= candLow) return false;
+  }
+  return true;
+}
+
+// SNR levels — scan all bars, collect swing highs (resistance) & lows (support)
+// Then evaluate freshness against current price
+function buildSNR(bars, lb = 5) {
+  const levels = [];
+  for (let i = lb; i < bars.length - lb; i++) {
+    // i is candidate idx
+    const candHigh = bars[i].h;
+    const candLow  = bars[i].l;
+    let isSH = true, isSL = true;
+    for (let k = i - lb; k <= i + lb; k++) {
+      if (k === i) continue;
+      if (bars[k].h >= candHigh) isSH = false;
+      if (bars[k].l <= candLow)  isSL = false;
+    }
+    if (isSH) {
+      const lvl = isBull(bars[i]) ? bars[i].c : bars[i].o;
+      levels.push({ lvl, isSup: false, fresh: true, bar: i });
+    }
+    if (isSL) {
+      const lvl = isBear(bars[i]) ? bars[i].c : bars[i].o;
+      levels.push({ lvl, isSup: true, fresh: true, bar: i });
+    }
+  }
+  // Mark freshness — level is fresh until price closes through it
+  const latest = bars[bars.length - 1];
+  for (const L of levels) {
+    // Look at all bars AFTER level formed
+    for (let j = L.bar + 1; j < bars.length; j++) {
+      const b = bars[j];
+      if (L.isSup) {
+        if (b.c < L.lvl && b.o < L.lvl) { L.fresh = false; break; }
+      } else {
+        if (b.c > L.lvl && b.o > L.lvl) { L.fresh = false; break; }
+      }
+    }
+  }
+  return levels;
+}
+
+// Core: compute signal state for a single TF's bar series
+function computeSignal(bars, tfId) {
+  if (!bars || bars.length < 30) return { tier: 'NONE', name: '—', dir: 'NONE', stop: null, accumulating: false, reason: 'insufficient data' };
+
+  const N = bars.length;
+  const b0 = bars[N - 1]; // current
+  const b1 = bars[N - 2]; // prev
+  const b2 = bars[N - 3];
+  const b3 = bars[N - 4];
+
+  const close = b0.c;
+  const atrVal = atr(bars, 14);
+  const tfSec = TIMEFRAMES.find(t => t.id === tfId).seconds;
+  const isValidLSTF = tfSec === 3600; // 1H only per methodology
+
+  // Engulfing
+  const bullEng = isBullishEngulf(b0, b1);
+  const bearEng = isBearishEngulf(b0, b1);
+
+  // RBR / DBD / RBD / DBR — Pine: i=2 is older, i=0 is current
+  // rbr = isBull(2) and bodySize(1) < bodySize(2) * 0.5 and isBull(0)
+  // In our arr: b2 = bars[N-3] = "i=2", b1 = bars[N-2] = "i=1", b0 = bars[N-1] = "i=0"
+  const rbr = isBull(b2) && bodySize(b1) < bodySize(b2) * 0.5 && isBull(b0);
+  const dbd = isBear(b2) && bodySize(b1) < bodySize(b2) * 0.5 && isBear(b0);
+  const rbd = isBull(b2) && bodySize(b1) < bodySize(b2) * 0.5 && isBear(b0);
+  const dbr = isBear(b2) && bodySize(b1) < bodySize(b2) * 0.5 && isBull(b0);
+
+  // SNR
+  const snr = buildSNR(bars, 5);
+
+  let atFreshSupport = false, atFreshResistance = false;
+  let nearestSup = null, nearestRes = null;
+  for (const L of snr) {
+    const near = Math.abs(close - L.lvl) / close < 0.003;
+    if (L.fresh && near && L.isSup) atFreshSupport = true;
+    if (L.fresh && near && !L.isSup) atFreshResistance = true;
+    if (L.isSup && (!nearestSup || Math.abs(close - L.lvl) < Math.abs(close - nearestSup.lvl))) nearestSup = L;
+    if (!L.isSup && (!nearestRes || Math.abs(close - L.lvl) < Math.abs(close - nearestRes.lvl))) nearestRes = L;
+  }
+
+  // SNRC1 / SNRC2 setup detection
+  let snrc1Buy = false, snrc1Sell = false, snrc2Buy = false, snrc2Sell = false;
+  for (const L of snr) {
+    const near = Math.abs(close - L.lvl) / close < 0.002;
+    if (L.fresh && L.isSup && near && rbr) snrc1Buy = true;
+    if (L.fresh && !L.isSup && near && dbd) snrc1Sell = true;
+    if (L.isSup && near && dbr) snrc2Buy = true;
+    if (!L.isSup && near && rbd) snrc2Sell = true;
+  }
+
+  // Liquidity sweep (LS) — wick pierces, body recovers within 0.25 * ATR
+  const lsTol = atrVal * 0.25;
+  let lsBuy = false, lsSell = false;
+  for (const L of snr) {
+    if (L.isSup) {
+      if (b0.l < L.lvl && bodyLow(b0) >= L.lvl - lsTol && b0.c > L.lvl - lsTol) lsBuy = true;
+    } else {
+      if (b0.h > L.lvl && bodyHigh(b0) <= L.lvl + lsTol && b0.c < L.lvl + lsTol) lsSell = true;
+    }
+  }
+  const lsBuyValid = lsBuy && isValidLSTF;
+  const lsSellValid = lsSell && isValidLSTF;
+
+  // Market structure swing tracking — get most recent swing H/L
+  let prevSwingH = null, prevSwingL = null;
+  for (let i = N - 6; i >= 5; i--) {
+    if (prevSwingH === null && isSwingHigh(bars, i + 5, 5)) prevSwingH = bars[i].h;
+    if (prevSwingL === null && isSwingLow(bars, i + 5, 5)) prevSwingL = bars[i].l;
+    if (prevSwingH !== null && prevSwingL !== null) break;
+  }
+
+  // QMR — break of structure + engulfing
+  let qmrBuy = false, qmrSell = false;
+  let qmrBuyLvl = null, qmrSellLvl = null;
+  if (prevSwingH !== null && prevSwingL !== null) {
+    if (b0.l < prevSwingL && b0.h < prevSwingH) {
+      qmrSellLvl = prevSwingH;
+      qmrSell = Math.abs(b0.h - prevSwingH) / close < 0.003 && bearEng;
+    }
+    if (b0.h > prevSwingH && b0.l > prevSwingL) {
+      qmrBuyLvl = prevSwingL;
+      qmrBuy = Math.abs(b0.l - prevSwingL) / close < 0.003 && bullEng;
+    }
+  }
+
+  // Drive count (rough — count swings in recent window)
+  let driveCount = 0;
+  for (let i = N - 30; i < N - 5; i++) {
+    if (i < 5) continue;
+    if (isSwingHigh(bars, i + 5, 5)) driveCount++;
+    if (isSwingLow(bars, i + 5, 5)) driveCount++;
+  }
+  const qmcBuy  = qmrBuy  && driveCount >= 4;
+  const qmcSell = qmrSell && driveCount >= 4;
+
+  // Dominant break
+  const avgBody = sma(bars.slice(-23, -3).map(bodySize), 20);
+  const domCandle = bodySize(b3) > avgBody * 2.0;
+  let cnt3 = 0;
+  for (const bb of [b0, b1, b2]) if (bodySize(bb) < bodySize(b3) * 0.6) cnt3++;
+  const isDomBreak = domCandle && cnt3 >= 2;
+  const domBreakUp = isDomBreak && isBear(b3) && bullEng;
+  const domBreakDn = isDomBreak && isBull(b3) && bearEng;
+
+  // RSS / SRR — broken SNR retest
+  let brokenSups = 0, brokenRes = 0;
+  for (const L of snr) {
+    if (L.isSup && !L.fresh) brokenSups++;
+    if (!L.isSup && !L.fresh) brokenRes++;
+  }
+  const rssSell = brokenSups >= 2 && bearEng;
+  const srrBuy  = brokenRes  >= 2 && bullEng;
+
+  // Accumulation detection
+  const atr14 = atrVal;
+  const atrSeries = [];
+  for (let i = Math.max(15, N - 50); i < N; i++) {
+    const sub = bars.slice(i - 14, i + 1);
+    if (sub.length >= 15) atrSeries.push(atr(sub, 14));
+  }
+  const atrAvg50 = atrSeries.length ? atrSeries.reduce((a, b) => a + b, 0) / atrSeries.length : atrVal;
+  const atrContract = atr14 < atrAvg50 * 0.60;
+  const lb20 = bars.slice(-20);
+  const rangeHigh = Math.max(...lb20.map(b => b.h));
+  const rangeLow  = Math.min(...lb20.map(b => b.l));
+  const priceRange = (rangeHigh - rangeLow) < close * 0.005;
+  const isAccumulating = atrContract && priceRange;
+
+  // ─── SIGNAL HIERARCHY ──
+  const sigHighBuy  = snrc1Buy  && bullEng && lsBuyValid  && atFreshSupport;
+  const sigHighSell = snrc1Sell && bearEng && lsSellValid && atFreshResistance;
+  const sigMedBuy   = !sigHighBuy  && ((snrc1Buy && bullEng) || qmrBuy || qmcBuy || domBreakUp);
+  const sigMedSell  = !sigHighSell && ((snrc1Sell && bearEng) || qmrSell || qmcSell || domBreakDn);
+  const sigLowBuy   = !sigHighBuy && !sigMedBuy && ((snrc2Buy && bullEng) || srrBuy);
+  const sigLowSell  = !sigHighSell && !sigMedSell && ((snrc2Sell && bearEng) || rssSell);
+
+  // ─── NAMING ──
+  function fmtPrice(p) {
+    if (p == null) return '—';
+    const abs = Math.abs(p);
+    const d = abs >= 1000 ? 2 : abs >= 10 ? 3 : 5;
+    return p.toFixed(d);
+  }
+
+  let name = '—', dir = 'NONE', tier = 'NONE';
+  let stop = null;
+
+  // Risk: SL placed beyond recent swing (or wick on engulf) + 0.5 * ATR buffer
+  // For BUYS: SL below recent swing low (use most recent swing low or b1.l)
+  // For SELLS: SL above recent swing high
+  function buyStop() {
+    const candidates = [b0.l, b1.l, b2.l, prevSwingL].filter(x => x != null);
+    return Math.min(...candidates) - atrVal * 0.3;
+  }
+  function sellStop() {
+    const candidates = [b0.h, b1.h, b2.h, prevSwingH].filter(x => x != null);
+    return Math.max(...candidates) + atrVal * 0.3;
+  }
+
+  if (sigHighBuy) { tier = 'HIGH'; dir = 'BUY'; name = 'SNRC1+LS'; stop = buyStop(); }
+  else if (sigHighSell) { tier = 'HIGH'; dir = 'SELL'; name = 'SNRC1+LS'; stop = sellStop(); }
+  else if (sigMedBuy) {
+    tier = 'MED'; dir = 'BUY'; stop = buyStop();
+    if (qmcBuy)        name = `QMC @ ${fmtPrice(qmrBuyLvl)} x${driveCount}`;
+    else if (qmrBuy)   name = `QMR @ ${fmtPrice(qmrBuyLvl)}`;
+    else if (snrc1Buy && bullEng) name = lsBuy && !lsBuyValid ? 'SNRC1+LS?' : 'SNRC1';
+    else if (domBreakUp) name = 'DOM BRK ▲';
+  }
+  else if (sigMedSell) {
+    tier = 'MED'; dir = 'SELL'; stop = sellStop();
+    if (qmcSell)        name = `QMC @ ${fmtPrice(qmrSellLvl)} x${driveCount}`;
+    else if (qmrSell)   name = `QMR @ ${fmtPrice(qmrSellLvl)}`;
+    else if (snrc1Sell && bearEng) name = lsSell && !lsSellValid ? 'SNRC1+LS?' : 'SNRC1';
+    else if (domBreakDn) name = 'DOM BRK ▼';
+  }
+  else if (sigLowBuy)  { tier = 'LOW'; dir = 'BUY';  stop = buyStop();  name = snrc2Buy ? 'SNRC2' : 'SRR'; }
+  else if (sigLowSell) { tier = 'LOW'; dir = 'SELL'; stop = sellStop(); name = snrc2Sell ? 'SNRC2' : 'RSS'; }
+
+  // Honor confidence filter
+  if (isAccumulating) { tier = 'ACC'; name = 'ACCUMULATING'; dir = 'NONE'; stop = null; }
+  else if (tier === 'LOW' && state.minConfidence !== 'All') { tier = 'NONE'; name = '—'; dir = 'NONE'; stop = null; }
+  else if (tier === 'MED' && state.minConfidence === 'High Only') { tier = 'NONE'; name = '—'; dir = 'NONE'; stop = null; }
+
+  return {
+    tier, name, dir, stop,
+    accumulating: isAccumulating,
+    close,
+    atFreshSupport, atFreshResistance,
+    bullEng, bearEng,
+    rbr, dbd, rbd, dbr,
+    lsBuy, lsSell, lsBuyValid, lsSellValid,
+    snrc1Buy, snrc1Sell,
+    qmrBuy, qmrSell, qmcBuy, qmcSell,
+    domBreakUp, domBreakDn,
+    atr: atrVal,
+    nearestSup: nearestSup?.lvl,
+    nearestRes: nearestRes?.lvl,
+  };
+}
+
+// HTF bias = current close vs previous close on H1 / H4
+function computeBias(bars) {
+  if (!bars || bars.length < 2) return 'NEUTRAL';
+  return bars[bars.length - 1].c > bars[bars.length - 2].c ? 'BULL' : 'BEAR';
+}
+
+// ─── SYMBOL DATA LOADER ─────────────────────────────────────────────
+async function loadSymbol(symbol) {
+  const ticker = yfTicker(symbol);
+  state.data[symbol] = state.data[symbol] || {};
+  try {
+    // Fetch all TFs in parallel
+    const fetches = TIMEFRAMES.map(async (tf) => {
+      if (tf.id === '4h') {
+        // 4H built from 1h aggregation — handled after
+        return null;
+      }
+      try {
+        const { bars, meta } = await fetchYahoo(ticker, tf.yfInterval, tf.yfRange);
+        state.data[symbol][tf.id] = { bars, meta };
+        return { tf: tf.id, ok: true, bars };
+      } catch (e) {
+        state.data[symbol][tf.id] = { bars: [], error: e.message };
+        return { tf: tf.id, ok: false, err: e.message };
+      }
+    });
+    await Promise.all(fetches);
+
+    // 4H: aggregate from 1h
+    const h1 = state.data[symbol]['1h']?.bars || [];
+    state.data[symbol]['4h'] = { bars: aggregateTo4H(h1) };
+
+    // Latest price from 5m (most current)
+    const latest5 = state.data[symbol]['5m']?.bars;
+    if (latest5 && latest5.length >= 2) {
+      const last = latest5[latest5.length - 1];
+      const firstOfDay = latest5[0];
+      state.prices[symbol] = {
+        price: last.c,
+        change: last.c - firstOfDay.o,
+        changePct: ((last.c - firstOfDay.o) / firstOfDay.o) * 100,
+        time: last.t,
+      };
+    }
+    delete state.errors[symbol];
+  } catch (e) {
+    state.errors[symbol] = e.message;
+  }
+}
+
+async function loadAllSymbols() {
+  await Promise.all(state.symbols.map(loadSymbol));
+}
+
+// ─── RENDER ─────────────────────────────────────────────────────────
+function fmtPrice(p, sym) {
+  if (p == null || isNaN(p)) return '—';
+  const abs = Math.abs(p);
+  let d = 2;
+  if (sym && (sym.includes('JPY'))) d = 3;
+  else if (abs < 1) d = 5;
+  else if (abs < 10) d = 4;
+  else if (abs < 100) d = 3;
+  else if (abs < 10000) d = 2;
+  else d = 2;
+  return p.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+function fmtCountdown(s) {
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s - h * 3600) / 60);
+  const sec = s - h * 3600 - m * 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+function renderClock() {
+  const now = new Date();
+  document.getElementById('utc-clock').textContent =
+    now.toUTCString().slice(17, 25) + ' UTC';
+}
+
+function renderTimers() {
+  const now = Date.now() / 1000;
+  const grid = document.getElementById('timer-grid');
+  grid.innerHTML = '';
+  for (const tf of TIMEFRAMES) {
+    const rem = tf.seconds - (now % tf.seconds);
+    const cell = document.createElement('div');
+    cell.className = 'timer-cell';
+    cell.innerHTML = `
+      <div class="timer-tf">${tf.id}</div>
+      <div class="timer-val">${fmtCountdown(rem)}</div>
+    `;
+    grid.appendChild(cell);
+  }
+}
+
+function renderWatchlist() {
+  const list = document.getElementById('symbol-list');
+  list.innerHTML = '';
+  document.getElementById('watch-count').textContent = `${state.symbols.length} SYM`;
+
+  for (const sym of state.symbols) {
+    const px = state.prices[sym];
+    const row = document.createElement('div');
+    row.className = 'symbol-row' + (sym === state.active ? ' active' : '');
+    const chg = px?.changePct;
+    const chgClass = chg == null ? '' : chg >= 0 ? 'up' : 'down';
+    const chgTxt = chg == null ? '—' : (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+    row.innerHTML = `
+      <div class="symbol-ticker">${sym}</div>
+      <div class="symbol-price">${px ? fmtPrice(px.price, sym) : '<span class="loading blink">…</span>'}</div>
+      <div class="symbol-chg ${chgClass}">${chgTxt}</div>
+    `;
+    row.addEventListener('click', () => {
+      state.active = sym;
+      renderAll();
+    });
+    list.appendChild(row);
+  }
+}
+
+function renderHero() {
+  const sym = state.active;
+  const px = state.prices[sym];
+  document.getElementById('hero-symbol').textContent = sym;
+  document.getElementById('active-symbol-label').textContent = sym;
+
+  if (!px) {
+    document.getElementById('hero-price').innerHTML = '<span class="loading blink">loading…</span>';
+    document.getElementById('hero-chg').textContent = '—';
+    document.getElementById('hero-time').textContent = '—';
+    return;
+  }
+  document.getElementById('hero-price').textContent = fmtPrice(px.price, sym);
+  const chgEl = document.getElementById('hero-chg');
+  const chg = px.changePct;
+  chgEl.className = 'chg ' + (chg >= 0 ? 'up' : 'down');
+  chgEl.textContent = (chg >= 0 ? '▲ +' : '▼ ') + chg.toFixed(2) + '%' + '  (' + (chg >= 0 ? '+' : '') + (px.change).toFixed(2) + ')';
+  document.getElementById('hero-time').textContent = new Date(px.time).toUTCString().slice(5, 25) + ' UTC';
+
+  // Bias from H1 / H4
+  const h1Bars = state.data[sym]?.['1h']?.bars;
+  const h4Bars = state.data[sym]?.['4h']?.bars;
+  const h1B = computeBias(h1Bars);
+  const h4B = computeBias(h4Bars);
+  const h1El = document.getElementById('h1-bias');
+  const h4El = document.getElementById('h4-bias');
+  h1El.textContent = h1B === 'BULL' ? '↑ BULL' : h1B === 'BEAR' ? '↓ BEAR' : '—';
+  h1El.className = 'bias-val ' + (h1B === 'BULL' ? 'bull' : 'bear');
+  h4El.textContent = h4B === 'BULL' ? '↑ BULL' : h4B === 'BEAR' ? '↓ BEAR' : '—';
+  h4El.className = 'bias-val ' + (h4B === 'BULL' ? 'bull' : 'bear');
+  document.getElementById('hero-bias').textContent = `bias: H1 ${h1B} · H4 ${h4B}`;
+}
+
+function tierClass(tier) {
+  return tier === 'HIGH' ? 'high' : tier === 'MED' ? 'med' : tier === 'LOW' ? 'low' : tier === 'ACC' ? 'acc' : 'none';
+}
+
+function renderMatrix() {
+  const matrix = document.getElementById('matrix');
+  matrix.innerHTML = '';
+  const sym = state.active;
+
+  // Header row
+  const headers = ['', '5m', '15m', '30m', '1H', '4H'];
+  headers.forEach(h => {
+    const c = document.createElement('div');
+    c.className = 'matrix-cell header';
+    c.textContent = h;
+    matrix.appendChild(c);
+  });
+
+  // Rows: STRATEGY, DIRECTION, ENTRY, STOP LOSS, RISK
+  const rowLabels = ['STRATEGY', 'DIRECTION', 'ENTRY', 'STOP LOSS', 'RISK'];
+
+  // Compute signals for all TFs
+  const sigs = {};
+  for (const tf of TIMEFRAMES) {
+    const bars = state.data[sym]?.[tf.id]?.bars || [];
+    sigs[tf.id] = computeSignal(bars, tf.id);
+  }
+
+  for (const label of rowLabels) {
+    const lc = document.createElement('div');
+    lc.className = 'matrix-cell label';
+    lc.textContent = label;
+    matrix.appendChild(lc);
+
+    for (const tf of TIMEFRAMES) {
+      const sig = sigs[tf.id];
+      const c = document.createElement('div');
+      c.className = 'matrix-cell center';
+
+      if (label === 'STRATEGY') {
+        if (sig.tier === 'ACC') {
+          c.innerHTML = `<span class="strat-badge acc">⏸ ACC</span>`;
+        } else if (sig.tier === 'NONE') {
+          c.innerHTML = `<span class="strat-badge none">—</span>`;
+        } else {
+          const tcls = tierClass(sig.tier);
+          const tlabel = sig.tier === 'HIGH' ? '★ HIGH' : sig.tier === 'MED' ? '▲ MED' : '✕ LOW';
+          c.innerHTML = `<div style="display:flex;flex-direction:column;gap:2px;align-items:center"><span class="strat-badge ${tcls}">${tlabel}</span><span style="font-size:9px;color:var(--text-dim)">${sig.name}</span></div>`;
+        }
+      }
+      else if (label === 'DIRECTION') {
+        if (sig.dir === 'BUY') c.innerHTML = `<span class="dir buy">▲ BUY</span>`;
+        else if (sig.dir === 'SELL') c.innerHTML = `<span class="dir sell">▼ SELL</span>`;
+        else c.innerHTML = `<span class="dir none">—</span>`;
+      }
+      else if (label === 'ENTRY') {
+        if (sig.dir === 'BUY' || sig.dir === 'SELL') {
+          c.innerHTML = `<span class="price-cell">${fmtPrice(sig.close, sym)}</span>`;
+        } else {
+          c.innerHTML = `<span class="price-cell dim">${sig.close ? fmtPrice(sig.close, sym) : '—'}</span>`;
+        }
+      }
+      else if (label === 'STOP LOSS') {
+        if (sig.stop != null) {
+          c.innerHTML = `<span class="price-cell" style="color:var(--red)">${fmtPrice(sig.stop, sym)}</span>`;
+        } else {
+          c.innerHTML = `<span class="price-cell dim">—</span>`;
+        }
+      }
+      else if (label === 'RISK') {
+        if (sig.stop != null && sig.close) {
+          const risk = Math.abs(sig.close - sig.stop);
+          const riskPct = (risk / sig.close) * 100;
+          c.innerHTML = `<span class="price-cell" style="font-size:10px">${fmtPrice(risk, sym)}<br><span style="color:var(--text-dim);font-size:9px">${riskPct.toFixed(2)}%</span></span>`;
+        } else {
+          c.innerHTML = `<span class="price-cell dim">—</span>`;
+        }
+      }
+
+      matrix.appendChild(c);
+    }
+  }
+
+  // Matrix status
+  const hits = Object.values(sigs).filter(s => s.tier !== 'NONE' && s.tier !== 'ACC').length;
+  document.getElementById('matrix-status').textContent = `${hits}/5 TF ACTIVE`;
+}
+
+function renderGuide() {
+  const sym = state.active;
+  // Use 15m timeframe as the primary lens for the 4-step guide (Malaysian best practice)
+  const bars15 = state.data[sym]?.['15m']?.bars || [];
+  const sig15 = computeSignal(bars15, '15m');
+  const sig1h = computeSignal(state.data[sym]?.['1h']?.bars || [], '1h');
+
+  // Step 1: At fresh SNR
+  const step1 = sig15.atFreshSupport || sig15.atFreshResistance;
+  // Step 2: LS sweep visible (1H only per methodology)
+  const step2 = sig1h.lsBuy || sig1h.lsSell;
+  // Step 3: RBR/DBD/RBD/DBR present
+  const step3 = sig15.rbr || sig15.dbd || sig15.rbd || sig15.dbr;
+  // Step 4: HTF engulfing confirmation (1H or 4H)
+  const sig4h = computeSignal(state.data[sym]?.['4h']?.bars || [], '4h');
+  const step4 = sig1h.bullEng || sig1h.bearEng || sig4h.bullEng || sig4h.bearEng;
+
+  const steps = [
+    { num: 1, pass: step1, title: 'Price at Fresh SNR (15m)',
+      detail: step1 ? (sig15.atFreshSupport ? '✓ at fresh SUPPORT' : '✓ at fresh RESISTANCE')
+                    : '→ waiting for fresh level' },
+    { num: 2, pass: step2, title: 'Liquidity sweep (BSL/SSL)',
+      detail: step2 ? (sig1h.lsBuy ? '✓ 1H SSL sweep (buy side)' : '✓ 1H BSL sweep (sell side)')
+                    : '→ no 1H sweep yet' },
+    { num: 3, pass: step3, title: 'RBR / DBD / RBD / DBR (15m)',
+      detail: step3 ? (sig15.rbr ? '✓ Rally-Base-Rally' : sig15.dbd ? '✓ Drop-Base-Drop' : sig15.rbd ? '✓ RBD' : '✓ DBR')
+                    : '→ no base pattern' },
+    { num: 4, pass: step4, title: 'Confirmation engulf (1H/4H)',
+      detail: step4 ? (sig1h.bullEng ? '✓ 1H bullish engulf' : sig1h.bearEng ? '✓ 1H bearish engulf' : sig4h.bullEng ? '✓ 4H bullish engulf' : '✓ 4H bearish engulf')
+                    : '→ no HTF engulf' },
+  ];
+
+  const list = document.getElementById('guide-list');
+  list.innerHTML = '';
+  for (const s of steps) {
+    const el = document.createElement('div');
+    el.className = 'guide-step' + (s.pass ? ' pass' : '');
+    el.innerHTML = `
+      <div class="step-num">${s.pass ? '✓' : s.num}</div>
+      <div>
+        <div class="step-text">${s.title}</div>
+        <div class="step-detail">${s.detail}</div>
+      </div>
+    `;
+    list.appendChild(el);
+  }
+
+  // Verdict
+  const passCount = steps.filter(s => s.pass).length;
+  const verdict = document.createElement('div');
+  if (passCount === 4) {
+    verdict.className = 'guide-verdict execute';
+    verdict.textContent = '▶ EXECUTE TRADE';
+  } else if (passCount === 3) {
+    verdict.className = 'guide-verdict almost';
+    verdict.textContent = `⚡ ALMOST · ${passCount}/4`;
+  } else if (passCount === 2) {
+    verdict.className = 'guide-verdict building';
+    verdict.textContent = `⏳ BUILDING · ${passCount}/4`;
+  } else {
+    verdict.className = 'guide-verdict wait';
+    verdict.textContent = `⏸ WAIT · ${passCount}/4`;
+  }
+  list.appendChild(verdict);
+}
+
+function renderSummary() {
+  const m = document.getElementById('summary-matrix');
+  m.innerHTML = '';
+  const headers = ['SYMBOL', '5m', '15m', '30m', '1H', '4H'];
+  headers.forEach(h => {
+    const c = document.createElement('div');
+    c.className = 'matrix-cell header';
+    c.textContent = h;
+    m.appendChild(c);
+  });
+  for (const sym of state.symbols) {
+    const lbl = document.createElement('div');
+    lbl.className = 'matrix-cell label';
+    lbl.textContent = sym;
+    lbl.style.cursor = 'pointer';
+    lbl.addEventListener('click', () => { state.active = sym; renderAll(); });
+    m.appendChild(lbl);
+
+    for (const tf of TIMEFRAMES) {
+      const bars = state.data[sym]?.[tf.id]?.bars || [];
+      const sig = bars.length > 0 ? computeSignal(bars, tf.id) : { tier: 'NONE', dir: 'NONE', name: '—' };
+      const c = document.createElement('div');
+      c.className = 'matrix-cell center';
+      if (sig.tier === 'ACC') {
+        c.innerHTML = `<span class="strat-badge acc">⏸</span>`;
+      } else if (sig.tier === 'NONE') {
+        c.innerHTML = `<span class="strat-badge none">—</span>`;
+      } else {
+        const tcls = tierClass(sig.tier);
+        const tlabel = sig.tier === 'HIGH' ? '★' : sig.tier === 'MED' ? '▲' : '✕';
+        const dirArrow = sig.dir === 'BUY' ? '▲' : sig.dir === 'SELL' ? '▼' : '';
+        const dirColor = sig.dir === 'BUY' ? 'var(--green)' : sig.dir === 'SELL' ? 'var(--red)' : 'var(--text-dim)';
+        c.innerHTML = `<div style="display:flex;flex-direction:column;gap:1px;align-items:center;font-size:9px"><span class="strat-badge ${tcls}">${tlabel} ${sig.tier}</span><span style="color:${dirColor};font-weight:700">${dirArrow} ${sig.dir}</span></div>`;
+      }
+      m.appendChild(c);
+    }
+  }
+}
+
+function renderAll() {
+  renderWatchlist();
+  renderHero();
+  renderMatrix();
+  renderGuide();
+  renderSummary();
+}
+
+// ─── EVENTS ─────────────────────────────────────────────────────────
+document.getElementById('add-btn').addEventListener('click', addSymbol);
+document.getElementById('add-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') addSymbol(); });
+
+async function addSymbol() {
+  const input = document.getElementById('add-input');
+  const val = input.value.trim().toUpperCase();
+  if (!val) return;
+  if (state.symbols.includes(val)) { input.value = ''; return; }
+  state.symbols.push(val);
+  input.value = '';
+  renderWatchlist();
+  await loadSymbol(val);
+  renderAll();
+}
+
+document.querySelectorAll('.conf-pick button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.conf-pick button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    state.minConfidence = b.dataset.conf;
+    renderAll();
+  });
+});
+
+// ─── BOOT ───────────────────────────────────────────────────────────
+async function refresh() {
+  const liveText = document.getElementById('live-text');
+  const liveTick = document.getElementById('live-tick');
+  liveText.textContent = 'FETCHING';
+  liveTick.classList.remove('error');
+  try {
+    await loadAllSymbols();
+    liveText.textContent = 'LIVE';
+    liveTick.classList.remove('error');
+  } catch (e) {
+    liveText.textContent = 'ERR · RETRYING';
+    liveTick.classList.add('error');
+  }
+  renderAll();
+}
+
+renderClock();
+renderTimers();
+renderAll();
+refresh();
+setInterval(renderClock, 1000);
+setInterval(renderTimers, 1000);
+setInterval(refresh, 30000); // 30s data refresh
+</script>
